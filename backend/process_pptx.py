@@ -7,12 +7,31 @@ import torch
 import pytesseract
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from PIL import Image
+from dotenv import load_dotenv
 # from pdf2image import convert_from_path  # If we later convert PPT to PDF
 
-# Initialize Pinecone
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-#  need to work on this
-index = pc.Index("your-index-name") 
+# Load environment variables from .env file
+load_dotenv()
+
+# Retrieve API Key
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = "openwebui-setup"
+
+# Ensure API key is set
+if not PINECONE_API_KEY:
+    raise ValueError("❌ Pinecone API key is missing. Please set PINECONE_API_KEY in your .env file.")
+
+# Initialize Pinecone Client
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Check if index exists, otherwise, create it
+if PINECONE_INDEX_NAME not in [i.name for i in pc.list_indexes()]:
+    print(f"🛠️ Creating Pinecone index: {PINECONE_INDEX_NAME}")
+    pc.create_index(PINECONE_INDEX_NAME, dimension=768, metric="cosine")  # Adjust dimension to match your embedding model
+
+# Connect to the Pinecone Index
+index = pc.Index(PINECONE_INDEX_NAME)
+print(f"✅ Connected to Pinecone Index: {PINECONE_INDEX_NAME}")
 
 # Load Local Embedding Model
 EMBEDDING_MODEL = "nomic-embed-text"
