@@ -3,6 +3,7 @@ import pinecone
 import ollama
 from dotenv import load_dotenv
 import time
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -36,7 +37,9 @@ def generate_embedding(text):
 
 # Function to Retrieve Relevant Slides from Pinecone
 def retrieve_relevant_slides(query, top_k=3):
-    """Retrieves the top-k most relevant slides from Pinecone."""
+    """Retrieves the top-k most relevant slides from Pinecone.
+       Returns each slide with its text, slide number, source, and similarity score.
+    """
     query_embedding = generate_embedding(query)
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True, namespace="ns1")
 
@@ -48,7 +51,13 @@ def retrieve_relevant_slides(query, top_k=3):
         slide_text = match["metadata"].get("summary", "Unknown content")
         slide_number = match["metadata"].get("slide_number", "Unknown slide")
         slide_source = match["metadata"].get("one_drive_link", "Unknown source")
-        slides.append({"text": slide_text, "slide_number": slide_number, "source": slide_source})
+        score = match.get("score", 0)  # capture similarity score
+        slides.append({
+            "text": slide_text,
+            "slide_number": slide_number,
+            "source": slide_source,
+            "score": score
+        })
 
     return slides
 
@@ -61,42 +70,61 @@ def chat_normal(query):
     return response["message"]
 
 # RAG Chat
-def chat_with_rag(query):
-    """Generates a response using retrieved slides as context."""
-    retrieved_slides = retrieve_relevant_slides(query)
+def chat_with_rag(query, retrieved_slides=None):
+    """Generates a response using retrieved slides as context.
+       Optionally uses pre-retrieved slides to avoid making a redundant call.
+    """
+    if retrieved_slides is None:
+        retrieved_slides = retrieve_relevant_slides(query)
 
     if not retrieved_slides:
-        return "No relevant information found in the database.", []
+        return chat_normal(query), []
 
     context = "\n".join([f"Slide {s['slide_number']}: {s['text']}" for s in retrieved_slides])
-    prompt = f"Using the following context, answer the question:\n\nContext:\n{context}\n\nQuestion: {query}"
+    prompt = (
+        f"Using the following context, answer the question:\n\n"
+        f"Context:\n{context}\n\nQuestion: {query}"
+    )
 
     response = ollama.chat(model="mistral:7b", messages=[{"role": "user", "content": prompt}])
     if "message" not in response:
         raise ValueError("Ollama chat response failed.")
-
     return response["message"], retrieved_slides
+
+# Dynamic Chat: Decides whether to use RAG or normal chat
+def chat_auto(query, score_threshold=0.7):
+    """
+    Decides dynamically whether to augment the chat with retrieval.
+    It first retrieves potential relevant slides and if the top score meets the threshold,
+    it uses RAG. Otherwise, it falls back to a normal chat.
+    """
+    retrieved_slides = retrieve_relevant_slides(query)
+    # If no slides are found, or if none of the slides meet the relevance threshold, use normal chat.
+    if not retrieved_slides:
+        return chat_normal(query), []
+
+    # Use the maximum score among the retrieved slides for the decision.
+    max_score = max(s.get("score", 0) for s in retrieved_slides)
+    if max_score >= score_threshold:
+        return chat_with_rag(query, retrieved_slides)
+    else:
+        return chat_normal(query), []
 
 # Interactive Query Loop
 if __name__ == "__main__":
-    print("\nType normal questions, or prefix with 'rag:' for retrieval-augmented Q&A.\n")
+    print("\nType your query (or type 'exit' to quit).\n")
     while True:
         user_query = input("Your input (type 'exit' to quit): ").strip()
         if user_query.lower() == "exit":
             break
 
-        # Check if user wants RAG mode (prefix: rag:)
-        if user_query.lower().startswith("rag:"):
-            query_text = user_query[4:].strip()
-            answer, sources = chat_with_rag(query_text)
-            print(f"\nAI (RAG) Response:\n{answer}\n")
+        # Use dynamic decision-making to choose the appropriate chatting mode.
+        answer, sources = chat_auto(user_query)
+        print(f"\nAI Response:\n{answer}\n")
+        if sources:
             print("Sources:")
-            if sources:
-                for src in sources:
-                    print(f" - Slide {src['slide_number']}: {src['text'][:100]}...")
-            else:
-                print("No relevant slides found.")
+            for src in sources:
+                # Print a shortened version of the slide text for clarity.
+                print(f" - Slide {src['slide_number']}: {src['text'][:100]}...")
         else:
-            # Normal Chat
-            answer = chat_normal(user_query)
-            print(f"\nAI (Normal) Response:\n{answer}\n")
+            print("No relevant slides found.")
