@@ -25,9 +25,10 @@ WORKDIR /workspace
 # Expose API server port
 EXPOSE 8000
 
-# Run vLLM OpenAI API server
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server", \
             "--host", "0.0.0.0", "--port", "8000", \
             "--model", "Qwen/Qwen2.5-14B-Instruct-1M", \
             "--dtype", "half", \
-            "--max-model-len", "58288"]
+            "--max-model-len", "8192", \
+            "--gpu-memory-utilization", "0.95", \
+            "--num-gpus", "1"]
