@@ -1,0 +1,21 @@
+services:
+  vllm:
+    build:
+      context: ./vllm
+      dockerfile: Dockerfile
+    container_name: vllm
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./vllm/app.py:/workspace/app.py:ro  # Ensure app.py exists before running
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
