@@ -6,5 +6,16 @@ services:
       - "3000:8080"
     volumes:
       - open-webui:/app/backend/data
+
+  vllm:
+    container_name: vllm
+    build:
+      context: ./vllm
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - vllm:/app/data
 volumes:
   open-webui:
+  vllm:
