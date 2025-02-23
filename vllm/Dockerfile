@@ -29,4 +29,5 @@ EXPOSE 8000
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server", \
             "--host", "0.0.0.0", "--port", "8000", \
             "--model", "Qwen/Qwen2.5-14B-Instruct-1M", \
-            "--dtype", "half"]
+            "--dtype", "half", \
+            "--max-model-len", "58288"]
