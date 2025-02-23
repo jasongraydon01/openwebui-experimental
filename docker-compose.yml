@@ -5,7 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: vllm-container
     ports:
-      - "8000:8000"
+      - "8000:8000"  # vLLM API
+      - "5000:5000"  # FastAPI server
     volumes:
       - ./vllm/app.py:/workspace/app.py:ro  # Ensure app.py exists before running
     environment:
@@ -19,3 +20,17 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    ports:
+      - "3000:8080"  # OpenWebUI frontend
+    volumes:
+      - open-webui:/app/backend/data
+    depends_on:
+      - vllm  # Ensure vLLM is up before starting OpenWebUI
+
+volumes:
+  open-webui:
