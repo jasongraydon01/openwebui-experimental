@@ -1,6 +1,6 @@
 # Use a CUDA 12.1 base image with Ubuntu 22.04
-ARG CUDA_VERSION=12.1
-FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS base
+ARG CUDA_VERSION=12.8.0
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04 AS base
 
 ARG PYTHON_VERSION=3.10
 ENV DEBIAN_FRONTEND=noninteractive
