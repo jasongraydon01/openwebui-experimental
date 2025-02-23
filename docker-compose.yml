@@ -11,6 +11,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - MAX_MODEL_LEN=8192  # Force max sequence length
     restart: unless-stopped
     deploy:
       resources:
