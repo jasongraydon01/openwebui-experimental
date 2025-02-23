@@ -3,7 +3,7 @@ services:
     build:
       context: ./vllm
       dockerfile: Dockerfile
-    container_name: vllm
+    container_name: vllm-container
     ports:
       - "8000:8000"
     volumes:
