@@ -39,6 +39,10 @@ services:
       - open-webui:/app/backend/data
     depends_on:
       - fastapi  # Ensure FastAPI is up before OpenWebUI
+    environment:
+      - ENABLE_OPENAI_API=True
+      - OPENAI_API_BASE_URL=http://vllm-container:8000/v1  # vLLM API
+      - OPENAI_API_KEY=EMPTY  # vLLM doesn't require authentication by default
 
 volumes:
   open-webui:
