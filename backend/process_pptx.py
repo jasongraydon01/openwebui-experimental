@@ -147,6 +147,12 @@ def summarize_slide(content):
         print(f"Error generating summary: {e}")
         raise
 
+# Function to chunk data into smaller batches
+def chunk_list(lst, chunk_size):
+    """Split a list into smaller chunks."""
+    for i in range(0, len(lst), chunk_size):
+        yield lst[i:i + chunk_size]
+
 # Function to Process PowerPoint Files & Store in Pinecone
 def process_pptx_files():
     check_for_removed_files()  # Ensure deleted files are cleaned up
@@ -208,9 +214,11 @@ def process_pptx_files():
     conn.close()
 
     # Upload all vectors in batches to Pinecone
+    BATCH_SIZE = 50  # Adjust based on size constraints
     if vectors:
-        index.upsert(vectors=vectors, namespace="ns1")
-        print(f"{len(vectors)} slides uploaded to Pinecone.")
+        for batch in chunk_list(vectors, BATCH_SIZE):
+            index.upsert(vectors=batch, namespace="ns1")
+            print(f"Uploaded {len(batch)} slides to Pinecone.")
 
 # Run Processing
 if __name__ == "__main__":
