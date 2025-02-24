@@ -27,7 +27,7 @@ def create_pinecone_index(index_name=PINECONE_INDEX_NAME):
             print(f"Index {index_name} not found. Creating...")
             pc.create_index(
                 name=index_name,
-                dimension=3584,
+                dimension=1536,
                 metric="cosine",
                 spec=pinecone.ServerlessSpec(
                     cloud="aws",

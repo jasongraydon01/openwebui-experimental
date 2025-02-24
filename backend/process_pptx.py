@@ -26,7 +26,7 @@ pc = pinecone.Pinecone(api_key=PINECONE_API_KEY)
 if not pc.has_index(PINECONE_INDEX_NAME):
     pc.create_index(
         name=PINECONE_INDEX_NAME,
-        dimension=3584,  # Adjust based on embedding model output
+        dimension=1536,  # Adjust based on embedding model output
         metric="cosine",
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
