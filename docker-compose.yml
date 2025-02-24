@@ -5,26 +5,7 @@ services:
       dockerfile: Dockerfile.vllm1
     container_name: vllm-model1-container
     ports:
-      - "8001:8000"  # vLLM API for model1
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-  vllm-model2:
-    build:
-      context: ./vllm
-      dockerfile: Dockerfile.vllm2
-    container_name: vllm-model2-container
-    ports:
-      - "8002:8000"  # vLLM API for model2
+      - "8000:8000"  # vLLM API for model1
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -46,10 +27,9 @@ services:
       - open-webui:/app/backend/data
     depends_on:
       - vllm-model1
-      - vllm-model2
     environment:
       - ENABLE_OPENAI_API=True
-      - OPENAI_API_BASE_URL=http://vllm-model1-container:8001/v1
+      - OPENAI_API_BASE_URL=http://vllm-model1-container:8000/v1
       - OPENAI_API_KEY=EMPTY
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searchapi

@@ -23,10 +23,9 @@ RUN pip install --no-cache-dir vllm
 WORKDIR /workspace
 
 # Expose API server port
-EXPOSE 8002
+EXPOSE 8000
 
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server", \
-            "--host", "0.0.0.0", "--port", "8002", \
-            "--model", "nomic-ai/nomic-embed-text-v1.5", \
-            "--gpu-memory-utilization", "0.25", \
-            "--trust-remote-code"]
+            "--host", "0.0.0.0", "--port", "8000", \
+            "--model", "Qwen/Qwen2.5-14B-Instruct", \
+            "--gpu-memory-utilization", "0.95"]
