@@ -28,6 +28,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     restart: unless-stopped
+    runtime: nvidia
     deploy:
       resources:
         reservations:
