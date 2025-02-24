@@ -33,4 +33,4 @@ services:
       - OPENAI_API_KEY=EMPTY  # vLLM doesn't require authentication by default
 
 volumes:
-  openwebui:
+  open-webui:
