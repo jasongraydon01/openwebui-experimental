@@ -18,31 +18,19 @@ services:
               count: all
               capabilities: [gpu]
 
-  fastapi:
-    build:
-      context: ./fastapi
-      dockerfile: Dockerfile
-    container_name: fastapi-container
-    ports:
-      - "5000:5000"  # FastAPI server
-    depends_on:
-      - vllm  # Ensure vLLM starts first
-    volumes:
-      - ./fastapi/app.py:/workspace/app.py:ro
-
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: openwebui
     ports:
-      - "3100:8080"  # OpenWebUI frontend
+      - "3000:8080"  # OpenWebUI frontend
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - fastapi  # Ensure FastAPI is up before OpenWebUI
+      - vllm  # Ensure vLLM is up before OpenWebUI
     environment:
       - ENABLE_OPENAI_API=True
       - OPENAI_API_BASE_URL=http://vllm-container:8000/v1  # vLLM API
       - OPENAI_API_KEY=EMPTY  # vLLM doesn't require authentication by default
 
 volumes:
-  open-webui:
+  openwebui:
