@@ -18,25 +18,6 @@ services:
               count: all
               capabilities: [gpu]
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ./ollama/ollama:/root/.ollama
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-    restart: unless-stopped
-    runtime: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: openwebui
@@ -50,7 +31,6 @@ services:
       - ENABLE_OPENAI_API=True
       - OPENAI_API_BASE_URL=http://vllm-container:8000/v1  # vLLM API
       - OPENAI_API_KEY=EMPTY  # vLLM doesn't require authentication by default
-      - OLLAMA_BASE_URL=http://ollama:11434
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searchapi
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
