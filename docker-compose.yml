@@ -2,8 +2,8 @@ services:
   vllm-model1:
     build:
       context: ./vllm
-      dockerfile: Dockerfile.vllm1
-    container_name: vllm-model1-container
+      dockerfile: Dockerfile
+    container_name: vllm-container
     ports:
       - "8000:8000"  # vLLM API for model1
     environment:
@@ -29,7 +29,7 @@ services:
       - vllm-model1
     environment:
       - ENABLE_OPENAI_API=True
-      - OPENAI_API_BASE_URL=http://vllm-model1-container:8000/v1
+      - OPENAI_API_BASE_URL=http://vllm-container:8000/v1
       - OPENAI_API_KEY=EMPTY
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searchapi
