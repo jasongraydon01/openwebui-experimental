@@ -77,3 +77,4 @@ services:
       - SEARCHAPI_ENGINE=google
 volumes:
   open-webui:
+  file_log_db:
