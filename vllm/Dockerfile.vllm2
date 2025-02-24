@@ -29,4 +29,4 @@ ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server", \
             "--host", "0.0.0.0", "--port", "8002", \
             "--model", "nomic-ai/nomic-embed-text-v1", \
             "--gpu-memory-utilization", "0.25", \
-            "--trust-remote-code", "True"]
+            "--trust-remote-code"]
