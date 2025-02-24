@@ -16,8 +16,8 @@ PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 DATABASE_PATH = os.getenv("DATABASE_PATH")
 
 # Add these after other environment variables
-VLLM_CHAT_URL = os.getenv("VLLM_CHAT_URL", "http://vllm-container1:8000/v1/chat/completions")
-VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL", "http://vllm-container2:8001/v1/embeddings")
+VLLM_CHAT_URL = os.getenv("VLLM_CHAT_URL")
+VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL")
 
 # Ensure API key is set
 if not PINECONE_API_KEY:

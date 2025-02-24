@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile.vllm2
     container_name: vllm-container2
     ports:
-      - "8001:8000"  # vLLM API for model1
+      - "8001:8001"  # vLLM API for model2
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -61,7 +61,7 @@ services:
       - FOLDER_PATH=/app/knowledge_base
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_CHAT_URL=http://vllm-container1:8000/v1/chat/completions
-      - VLLM_EMBED_URL=http://vllm-container2:8000/v1/embeddings
+      - VLLM_EMBED_URL=http://vllm-container2:8001/v1/embeddings
     restart: unless-stopped
     runtime: nvidia
     networks:
