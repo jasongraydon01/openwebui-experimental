@@ -1,0 +1,7 @@
+pinecone                # Pinecone client for indexing and querying
+python-pptx             # To extract data from PPTX files
+pytesseract             # (Optional) For OCR in case there are image-based slides
+python-dotenv           # To load environment variables from .env file
+requests                # For making HTTP requests
+pydantic                # For data validation with BaseModel and Field
+typing-extensions       # For backward compatibility with Python versions < 3.9

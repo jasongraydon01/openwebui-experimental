@@ -2,8 +2,8 @@ services:
   vllm-model1:
     build:
       context: ./vllm
-      dockerfile: Dockerfile
-    container_name: vllm-container
+      dockerfile: Dockerfile.vllm1
+    container_name: vllm-container1
     ports:
       - "8000:8000"  # vLLM API for model1
     environment:
@@ -17,6 +17,46 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  vllm-model2:
+    build:
+      context: ./vllm
+      dockerfile: Dockerfile.vllm2
+    container_name: vllm-container2
+    ports:
+      - "8001:8000"  # vLLM API for model1
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  backend:
+    image: python:3.10-slim  # Use the Python base image
+    container_name: backend
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./backend:/app/backend  # Mount backend code (useful for development)
+      - /home/ubuntu/OneDrive/OneDrive-Test:/app/knowledge_base  # Mount PPTX files
+      - ./entrypoint.sh:/app/entrypoint.sh
+      - file_log_db:/app/log:rw  # Persist database folder; adjust to accomodate the synced local OneDrive folder
+    working_dir: /app/backend  # Set the working directory to /app/backend
+    entrypoint: ["/bin/bash", "-c", "pip install --no-cache-dir -r requirements.txt && /app/entrypoint.sh"]
+    depends_on:
+      - vllm-model1
+      - vllm-model2
+    environment:
+      - DATABASE_PATH=/app/log/file_log.db  # Use path inside container
+      - FOLDER_PATH=/app/knowledge_base  # Use path inside container
+      - NVIDIA_VISIBLE_DEVICES=all
+    restart: unless-stopped
+    runtime: nvidia
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
