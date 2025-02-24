@@ -25,8 +25,8 @@ WORKDIR /workspace
 # Expose API server port
 EXPOSE 8001
 
-# EntryPoint with limited GPU memory usage for Model 1 to leave room for Model 2
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server", \
             "--host", "0.0.0.0", "--port", "8001", \
             "--model", "Qwen/Qwen2.5-14B-Instruct", \
-            "--gpu-memory-utilization", "0.75"]  # Set GPU memory utilization to 75% to leave room for Model 2
+            "--gpu-memory-utilization", "0.75", \
+            "--trust-remote-code", "True"]
