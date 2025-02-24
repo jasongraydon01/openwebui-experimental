@@ -194,4 +194,12 @@ def process_pptx_files():
 
 # Run Processing
 if __name__ == "__main__":
-    process_pptx_files()
+    try:
+        print("Starting PowerPoint processing...")
+        process_pptx_files()
+        print("Processing completed successfully.")
+    except Exception as e:
+        print(f"Fatal error during processing: {e}")
+        raise
+    finally:
+        print("Script execution finished.")
