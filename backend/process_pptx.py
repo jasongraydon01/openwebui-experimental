@@ -17,8 +17,8 @@ DATABASE_PATH = os.getenv("DATABASE_PATH")
 FOLDER_PATH = os.getenv("FOLDER_PATH")
 
 # vLLM API URLs
-VLLM_CHAT_URL = "http://vllm-container:8000/v1/chat/completions"
-VLLM_EMBED_URL = "http://vllm-container:8001/v1/embeddings"
+VLLM_CHAT_URL = os.getenv("VLLM_CHAT_URL", "http://vllm-container1:8000/v1/chat/completions")
+VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL", "http://vllm-container2:8000/v1/embeddings")
 
 # Initialize Pinecone Client
 pc = pinecone.Pinecone(api_key=PINECONE_API_KEY)

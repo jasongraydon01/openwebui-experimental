@@ -17,6 +17,8 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    networks:
+      - app_network
 
   vllm-model2:
     build:
@@ -36,6 +38,9 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    networks:
+      - app_network
+
   backend:
     image: python:3.10-slim  # Use the Python base image
     container_name: backend
@@ -52,11 +57,15 @@ services:
       - vllm-model1
       - vllm-model2
     environment:
-      - DATABASE_PATH=/app/log/file_log.db  # Use path inside container
-      - FOLDER_PATH=/app/knowledge_base  # Use path inside container
+      - DATABASE_PATH=/app/log/file_log.db
+      - FOLDER_PATH=/app/knowledge_base
       - NVIDIA_VISIBLE_DEVICES=all
+      - VLLM_CHAT_URL=http://vllm-container1:8000/v1/chat/completions
+      - VLLM_EMBED_URL=http://vllm-container2:8000/v1/embeddings
     restart: unless-stopped
     runtime: nvidia
+    networks:
+      - app_network
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
@@ -69,12 +78,19 @@ services:
       - vllm-model1
     environment:
       - ENABLE_OPENAI_API=True
-      - OPENAI_API_BASE_URL=http://vllm-container:8000/v1
+      - OPENAI_API_BASE_URL=http://vllm-container1:8000/v1
       - OPENAI_API_KEY=EMPTY
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searchapi
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
 volumes:
   open-webui:
   file_log_db:
