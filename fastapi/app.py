@@ -5,10 +5,10 @@ from openai import OpenAI
 # Initialize FastAPI app
 app = FastAPI()
 
-# OpenAI client with vLLM local API
+# Connect FastAPI to vLLM running in a separate container
 client = OpenAI(
     api_key="EMPTY",
-    base_url="http://localhost:8000/v1",  # Your vLLM API endpoint
+    base_url="http://vllm-container:8000/v1",  # vLLM is running in a separate container
 )
 
 # Request model
@@ -32,4 +32,3 @@ async def chat_completion(request: ChatRequest):
 @app.get("/health")
 async def health():
     return {"status": "running"}
-
