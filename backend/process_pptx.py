@@ -4,7 +4,6 @@ import pinecone
 import pptx
 from PIL import Image
 from dotenv import load_dotenv
-import ollama
 import sqlite3
 from pinecone import ServerlessSpec
 import requests
