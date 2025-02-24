@@ -54,8 +54,8 @@ services:
     working_dir: /app/backend  # Set the working directory to /app/backend
     entrypoint: ["/bin/bash", "-c", "pip install --no-cache-dir -r requirements.txt && /app/entrypoint.sh"]
     depends_on:
-      - vllm-model1
-      - vllm-model2
+      - vllm-container1
+      - vllm-container2
     environment:
       - DATABASE_PATH=/app/log/file_log.db
       - FOLDER_PATH=/app/knowledge_base
@@ -75,7 +75,7 @@ services:
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - vllm-model1
+      - vllm-container1
     environment:
       - ENABLE_OPENAI_API=True
       - OPENAI_API_BASE_URL=http://vllm-container1:8000/v1
