@@ -312,12 +312,12 @@ def process_slide_with_context(slides_data, current_index, file_name, context_wi
     # Create vector ID
     vector_id = f"{file_name}_{slide_number}"
     
-    # Track context slides for metadata
+    # Track context slides for metadata - ensure they are strings
     context_slides = []
     for i in range(max(0, current_index - context_window), current_index):
-        context_slides.append(slides_data[i]["slide_number"])
+        context_slides.append(str(slides_data[i]["slide_number"]))
     for i in range(current_index + 1, min(len(slides_data), current_index + context_window + 1)):
-        context_slides.append(slides_data[i]["slide_number"])
+        context_slides.append(str(slides_data[i]["slide_number"]))
     
     return {
         "vector_id": vector_id,
@@ -394,7 +394,7 @@ def process_pptx_files(context_window_size=1):
             # Convert context slides list to JSON string for storage
             context_slides_json = json.dumps(processed_slide.get("context_slides", []))
             
-            # Prepare metadata
+            # Prepare metadata - ensure all values are of proper types for Pinecone
             metadata = {
                 "file_name": pptx_file,
                 "slide_number": processed_slide["slide_number"],
@@ -402,7 +402,7 @@ def process_pptx_files(context_window_size=1):
                 "content_preview": processed_slide["content"][:1000],
                 "keywords": processed_slide["keywords"],
                 "last_modified": last_modified,
-                "context_slides": processed_slide.get("context_slides", [])
+                "context_slides": processed_slide.get("context_slides", [])  # Already strings from process_slide_with_context
             }
             
             # Add to vectors batch
