@@ -178,6 +178,17 @@ class Tools:
             "User-Agent": "vLLM-RAG-Tool/1.0",
         }
         self.pinecone_client = None
+        self.initialized = False
+        try:
+            # Verify the environment variables and settings
+            assert isinstance(self.valves.PINECONE_API_KEY, str) and len(self.valves.PINECONE_API_KEY) > 10, "Invalid Pinecone API key"
+            assert isinstance(self.valves.PINECONE_ENVIRONMENT, str) and len(self.valves.PINECONE_ENVIRONMENT) > 2, "Invalid Pinecone environment"
+            assert isinstance(self.valves.PINECONE_INDEX, str) and len(self.valves.PINECONE_INDEX) > 0, "Invalid Pinecone index name"
+            assert isinstance(self.valves.VLLM_EMBEDDINGS_URL, str) and len(self.valves.VLLM_EMBEDDINGS_URL) > 5, "Invalid vLLM embeddings URL"
+            self.initialized = True
+        except Exception as e:
+            print(f"WARNING: RAG Tool initialization issue: {str(e)}")
+            # We don't raise here to allow the tool to be loaded, but it will report initialization errors on first use
 
     # -------------------------------
     # Pinecone Connection Methods
@@ -186,6 +197,9 @@ class Tools:
     async def setup_pinecone(self):
         """Initialize the Pinecone client if not already initialized."""
         try:
+            if not self.initialized:
+                return False, "RAG Tool was not properly initialized. Check your configuration."
+
             if self.pinecone_client is None:
                 pinecone.init(
                     api_key=self.valves.PINECONE_API_KEY,
@@ -195,7 +209,9 @@ class Tools:
                 return True
             return True
         except Exception as e:
-            return False, f"Failed to initialize Pinecone: {str(e)}"
+            error_message = f"Failed to initialize Pinecone: {str(e)}"
+            print(f"ERROR: {error_message}")
+            return False, error_message
 
     # -------------------------------
     # Embedding & Vector Methods
@@ -211,6 +227,9 @@ class Tools:
         Returns:
             List of float values representing the embedding vector
         """
+        if not text or not isinstance(text, str):
+            raise ValueError("Empty or invalid text provided for embedding")
+            
         payload = {
             "input": text,
             "model": self.valves.EMBEDDING_MODEL,
@@ -231,6 +250,8 @@ class Tools:
                 return data["data"][0]["embedding"]
             else:
                 raise ValueError("No embedding found in response")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Error connecting to vLLM embedding service: {str(e)}")
         except Exception as e:
             raise Exception(f"Error generating embeddings: {str(e)}")
             
@@ -922,12 +943,25 @@ Answer:"""
             __event_emitter__: Event emitter for status updates
             
         Returns:
-            Formatted context from relevant documents or a complete prompt
+            JSON string containing either the formatted context/prompt or an error message
         """
         self.status_emitter = StatusEventEmitter(__event_emitter__)
         self.message_emitter = MessageEventEmitter(__event_emitter__)
         
         try:
+            # Validate input
+            if not query or not isinstance(query, str):
+                await self.status_emitter.emit(
+                    status="error",
+                    description="Invalid query: Empty or not a string",
+                    done=True
+                )
+                return json.dumps({
+                    "success": False,
+                    "error": "Invalid query provided",
+                    "data": None
+                })
+                
             # Setup and initialize
             await self.status_emitter.emit("Initializing vLLM RAG query...")
             
@@ -943,22 +977,39 @@ Answer:"""
             # Initialize Pinecone
             await self.status_emitter.emit("Connecting to Pinecone...")
             pinecone_setup = await self.setup_pinecone()
-            if not isinstance(pinecone_setup, bool):
+            if not isinstance(pinecone_setup, bool) or not pinecone_setup:
+                error_msg = pinecone_setup[1] if isinstance(pinecone_setup, tuple) and len(pinecone_setup) > 1 else "Unknown Pinecone initialization error"
                 await self.status_emitter.emit(
                     status="error",
-                    description=f"Pinecone initialization failed: {pinecone_setup[1]}",
+                    description=f"Pinecone initialization failed: {error_msg}",
                     done=True
                 )
-                return json.dumps({"error": pinecone_setup[1]})
+                return json.dumps({
+                    "success": False,
+                    "error": error_msg,
+                    "data": None
+                })
             
             # Generate embeddings
-            await self.status_emitter.emit("Generating embeddings for query...")
-            embedding = await self.get_embeddings(query)
-            
-            if self.valves.DEBUG_MODE:
-                await self.message_emitter.emit(
-                    f"#### Embedding Generated\nDimensions: {len(embedding)}\n"
+            try:
+                await self.status_emitter.emit("Generating embeddings for query...")
+                embedding = await self.get_embeddings(query)
+                
+                if self.valves.DEBUG_MODE:
+                    await self.message_emitter.emit(
+                        f"#### Embedding Generated\nDimensions: {len(embedding)}\n"
+                    )
+            except Exception as embed_error:
+                await self.status_emitter.emit(
+                    status="error",
+                    description=f"Failed to generate embeddings: {str(embed_error)}",
+                    done=True
                 )
+                return json.dumps({
+                    "success": False,
+                    "error": f"Embedding generation error: {str(embed_error)}",
+                    "data": None
+                })
             
             # Use the advanced RAG pipeline for document retrieval
             await self.status_emitter.emit("Running advanced RAG pipeline...")
@@ -982,24 +1033,38 @@ Answer:"""
                 if self.valves.DEBUG_MODE:
                     await self.message_emitter.emit(f"Advanced RAG error: {str(advanced_error)}")
                     
-                # Generate embeddings
-                embedding = await self.get_embeddings(query)
-                
                 # Extract keywords (for simple hybrid search)
                 keywords = None
                 if use_keywords:
                     await self.status_emitter.emit("Extracting keywords from query...")
-                    keywords = await self.extract_keywords_from_query(query)
+                    try:
+                        keywords = await self.extract_keywords_from_query(query)
+                    except Exception as keyword_error:
+                        await self.message_emitter.emit(f"Keyword extraction error: {str(keyword_error)}")
+                        # Continue without keywords
                 
                 # Simple query
                 await self.status_emitter.emit("Retrieving relevant documents from Pinecone...")
-                documents = await self.query_pinecone(embedding, namespace, keywords)
-                
-                # Format results
-                if not documents:
-                    formatted_context = "No relevant documents found for the query."
-                else:
-                    formatted_context = await self.format_documents(documents)
+                try:
+                    documents = await self.query_pinecone(embedding, namespace, keywords)
+                    
+                    # Format results
+                    if not documents:
+                        formatted_context = "No relevant documents found for the query."
+                    else:
+                        formatted_context = await self.format_documents(documents)
+                except Exception as query_error:
+                    error_msg = str(query_error)
+                    await self.status_emitter.emit(
+                        status="error",
+                        description=f"Error querying Pinecone: {error_msg}",
+                        done=True
+                    )
+                    return json.dumps({
+                        "success": False,
+                        "error": error_msg,
+                        "data": None
+                    })
             
             # Complete the query
             await self.status_emitter.emit(
@@ -1008,18 +1073,32 @@ Answer:"""
                 done=True
             )
             
+            # Prepare final content
+            final_content = ""
             if include_prompt_template:
-                # Return a complete prompt template that includes both the context and instructions
-                return await self.format_rag_prompt(query, formatted_context)
+                # Create a complete prompt template that includes both the context and instructions
+                final_content = await self.format_rag_prompt(query, formatted_context)
             else:
-                # Return just the context
-                return formatted_context
+                # Just include the context
+                final_content = formatted_context
+                
+            # Return a consistent JSON structure
+            return json.dumps({
+                "success": True,
+                "error": None,
+                "data": {
+                    "content": final_content,
+                    "document_count": len(documents),
+                    "include_prompt_template": include_prompt_template
+                }
+            })
             
         except Exception as e:
             error_traceback = traceback.format_exc()
+            error_msg = str(e)
             await self.status_emitter.emit(
                 status="error",
-                description=f"Error during RAG query: {str(e)}",
+                description=f"Error during RAG query: {error_msg}",
                 done=True
             )
             
@@ -1028,7 +1107,11 @@ Answer:"""
                     f"#### Error Details\n```\n{error_traceback}\n```\n"
                 )
                 
-            return json.dumps({"error": str(e)})
+            return json.dumps({
+                "success": False,
+                "error": error_msg,
+                "data": None
+            })
     
     async def search_by_keywords(
         self,
