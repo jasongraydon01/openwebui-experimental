@@ -17,6 +17,12 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 60s
+      timeout: 20s
+      retries: 10
+      start_period: 180s
     networks:
       - app_network
 
@@ -38,6 +44,12 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/v1/models"]
+      interval: 60s
+      timeout: 20s
+      retries: 10
+      start_period: 180s
     networks:
       - app_network
 
@@ -54,8 +66,12 @@ services:
     working_dir: /app/backend  # Set the working directory to /app/backend
     entrypoint: ["/bin/bash", "-c", "pip install --no-cache-dir -r requirements.txt && /app/entrypoint.sh"]
     depends_on:
-      - vllm-model1
-      - vllm-model2
+      vllm-model1:
+        condition: service_healthy
+      vllm-model2:
+        condition: service_healthy
+      openwebui:
+        condition: service_healthy
     environment:
       - DATABASE_PATH=/app/log/file_log.db
       - FOLDER_PATH=/app/knowledge_base
@@ -75,7 +91,10 @@ services:
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - vllm-model1
+      vllm-model1:
+        condition: service_healthy
+      vllm-model2:
+        condition: service_healthy
     environment:
       - ENABLE_OPENAI_API=True
       - OPENAI_API_BASE_URL=http://vllm-model1:8000/v1
@@ -84,6 +103,12 @@ services:
       - RAG_WEB_SEARCH_ENGINE=searchapi
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
     networks:
       - app_network
 
