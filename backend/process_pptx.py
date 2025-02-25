@@ -331,7 +331,7 @@ def process_slide_with_context(slides_data, current_index, file_name, context_wi
 # Main Processing Function
 # -------------------------------
 
-def process_pptx_files(context_window_size=1):
+def process_pptx_files(context_window_size=2):
     """Main function to process PowerPoint files and update the vector database.
     
     Args:
