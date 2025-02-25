@@ -10,7 +10,6 @@ import json
 import pinecone
 from pinecone import ServerlessSpec
 import pptx
-import docling
 import requests
 import sqlite3
 from dotenv import load_dotenv
@@ -163,22 +162,26 @@ def get_file_hash(file_path):
     return hasher.hexdigest()
 
 def extract_pptx_content(pptx_path):
-    """Extract content from PowerPoint file using both Docling and python-pptx."""
-    # Use Docling for consistent document parsing
-    doc = docling.load(pptx_path)
-    
-    # Use python-pptx for additional metadata and table extraction
+    """Extract content from PowerPoint file using python-pptx."""
     prs = pptx.Presentation(pptx_path)
     slides_data = []
     
-    for i, (slide, docling_slide) in enumerate(zip(prs.slides, doc.chunks())):
-        slide_title = slide.shapes.title.text if slide.shapes.title else ""
-        slide_text = docling_slide.text
+    for i, slide in enumerate(prs.slides):
+        # Extract slide title
+        slide_title = ""
+        if slide.shapes.title:
+            slide_title = slide.shapes.title.text
+        
+        # Extract text from all shapes
+        slide_text = ""
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text:
+                slide_text += shape.text + "\n"
         
         # Extract tables
         tables = []
         for shape in slide.shapes:
-            if shape.has_table:
+            if hasattr(shape, "has_table") and shape.has_table:
                 table_data = [[cell.text for cell in row.cells] for row in shape.table.rows]
                 tables.append(table_data)
 
