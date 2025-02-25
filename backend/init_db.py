@@ -7,28 +7,42 @@ load_dotenv()
 DB_PATH = os.getenv("DATABASE_PATH")
 
 def initialize_database():
-    """Initialize the SQLite database and create necessary tables."""
+    """Initialize the SQLite database with necessary tables."""
     # Check if the file_log.db exists
     if not os.path.exists(DB_PATH):
         print(f"⚠️ Database not found. Creating {DB_PATH}...")
-
-    # Connect to the SQLite database (it will create the file if it doesn't exist)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
     
-    # Create a table for file logging if it doesn't already exist
-    cursor.execute("""
+    # Connect to the SQLite database
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    # Create file_log table if it doesn't exist
+    c.execute('''
     CREATE TABLE IF NOT EXISTS file_log (
-                    file_name TEXT PRIMARY KEY,
-                    last_modified TIMESTAMP,
-                    last_processed TIMESTAMP
+        file_name TEXT PRIMARY KEY,
+        file_hash TEXT,
+        last_modified REAL,
+        last_processed REAL,
+        slide_count INTEGER
     )
-    """)
-
-    # Commit the changes and close the connection
+    ''')
+    
+    # Create slides table if it doesn't exist
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS slides (
+        vector_id TEXT PRIMARY KEY,
+        file_name TEXT,
+        slide_number INTEGER,
+        content TEXT,
+        keywords TEXT,
+        context_slides TEXT,
+        FOREIGN KEY (file_name) REFERENCES file_log (file_name) ON DELETE CASCADE
+    )
+    ''')
+    
     conn.commit()
     conn.close()
-    print(f"✅ Database initialized at {DB_PATH}")
+    print(f"✅ Database initialized at {DB_PATH} with file_log and slides tables")
 
 if __name__ == "__main__":
     initialize_database()
