@@ -279,33 +279,30 @@ def summarize_slide(slide_content):
     # Combine all content
     full_content = f"Title: {title}\n\nContent: {text}\n\nTables: {table_text}"
     
-    # Prepare the prompt for the LLM
-    prompt = f"""
-    Create a concise yet comprehensive summary of the following slide. Follow these guidelines:
-
+    # Prepare the system message and user message for the chat API
+    system_message = """You summarize presentation slides concisely while preserving all numerical data exactly as presented. Follow these guidelines:
     1. Provide a clear overview of the main points and insights
     2. For any numerical data, statistics or percentages, quote them EXACTLY as they appear in the original text
-       Example format: "22% of HCPs selected yes for xyz"
-    3. Preserve all specific metrics, numbers and quantitative findings in their original form
+    3. Preserve all specific metrics, numbers and quantitative findings in their original form"""
     
-    Slide Content:
-    {full_content}
-    
-    Summary:
-    """
+    user_message = f"Summarize this slide content:\n\n{full_content}"
     
     try:
-        # Use the vLLM API to get the summary
+        # Use the vLLM API to get the summary using the chat completions format
         payload = {
-            "prompt": prompt,
             "model": "Qwen/Qwen2.5-7B-Instruct",
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ],
             "temperature": 0.2  # Lower temperature for more precise data extraction
         }
         response = requests.post(VLLM_CHAT_URL, json=payload, timeout=30)
         response.raise_for_status()
         
-        # Extract the summary from the response
-        summary = response.json().get("text", "").strip()
+        # Extract the summary from the response - chat completions use a different response format
+        response_data = response.json()
+        summary = response_data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         
         return summary
     
@@ -320,7 +317,7 @@ def summarize_slide(slide_content):
 
 def convert_pptx_to_pdf(pptx_path, pdf_path):
     """Convert PPTX to PDF using libreoffice."""
-    libreoffice_path = '/usr/bin/libreoffice'
+    libreoffice_path = '/usr/lib/libreoffice/program/libmergedlo.so'
     subprocess.run([libreoffice_path, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', os.path.dirname(pdf_path)])
     print(f'Converted {pptx_path} to {pdf_path}')
 
