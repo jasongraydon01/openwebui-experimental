@@ -186,33 +186,36 @@ def categorize_presentation(presentation_content):
     Returns:
         A dictionary with categorization information
     """
-    # Prepare the prompt for the LLM
-    prompt = f"""
-    Analyze the following presentation content and categorize it across these dimensions:
+    # Prepare system and user messages for the chat API
+    system_message = """You analyze presentation content and categorize it. 
+    Return your analysis in JSON format with these four keys: "research_type", "project_type", "client", "product"."""
+    
+    user_message = f"""Analyze the following presentation content and categorize it across these dimensions:
     - Research Type: Qualitative or Quantitative
     - Project Type: Segmentation, ATU, Demand Study, Message Testing, etc.
     - Client: Identify the pharmaceutical client (e.g., Pfizer, JNJ, etc.)
     - Product: Identify the product (e.g., Spravato, Fintepla, etc.)
     
-    Return your analysis in JSON format with these four keys: "research_type", "project_type", "client", "product". 
-    
     Presentation Content:
-    {presentation_content[:20000]}  # Limiting to first 20000 chars to avoid token limits
-    """
+    {presentation_content[:20000]}"""  # Limiting to first 20000 chars to avoid token limits
     
     try:
-        # Use the vLLM API to get the categorization
+        # Use the vLLM API to get the categorization with chat completions format
         payload = {
-            "prompt": prompt,
             "model": "Qwen/Qwen2.5-7B-Instruct",
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ],
             "temperature": 0.2,  # Low temperature for more consistent results
             "max_tokens": 500
         }
         response = requests.post(VLLM_CHAT_URL, json=payload, timeout=60)
         response.raise_for_status()
         
-        # Parse the response to extract the JSON
-        llm_response = response.json().get("text", "") 
+        # Parse the response to extract the JSON from chat completions format
+        response_data = response.json()
+        llm_response = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
         
         # Extract JSON from the response
         try:
@@ -316,9 +319,14 @@ def summarize_slide(slide_content):
 # -------------------------------
 
 def convert_pptx_to_pdf(pptx_path, pdf_path):
-    """Convert PPTX to PDF using libreoffice."""
-    libreoffice_path = '/usr/lib/libreoffice/program/libmergedlo.so'
-    subprocess.run([libreoffice_path, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', os.path.dirname(pdf_path)])
+    """Convert PPTX to PDF using LibreOffice."""
+    libreoffice_cmd = 'libreoffice'  # Or use 'soffice' depending on installation
+    output_dir = os.path.dirname(pdf_path)
+
+    subprocess.run([
+        libreoffice_cmd, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', output_dir
+    ], check=True)
+
     print(f'Converted {pptx_path} to {pdf_path}')
 
 def extract_pptx_content_enhanced(pptx_path):
