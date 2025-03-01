@@ -188,13 +188,17 @@ def categorize_presentation(presentation_content):
     """
     # Prepare system and user messages for the chat API
     system_message = """You analyze presentation content and categorize it. 
-    Return your analysis in JSON format with these four keys: "research_type", "project_type", "client", "product"."""
+    Return your analysis in JSON format with these four keys: "research_type", "project_type", "client", "product".
+    IMPORTANT: Never use null values - always use string values like "Unknown" if you cannot determine a category."""
     
     user_message = f"""Analyze the following presentation content and categorize it across these dimensions:
     - Research Type: Qualitative or Quantitative
     - Project Type: Segmentation, ATU, Demand Study, Message Testing, etc.
     - Client: Identify the pharmaceutical client (e.g., Pfizer, JNJ, etc.)
     - Product: Identify the product (e.g., Spravato, Fintepla, etc.)
+    
+    IMPORTANT: Always provide a string value for each field. Use "Unknown" if you cannot determine a value.
+    Never use null, undefined, or empty values.
     
     Presentation Content:
     {presentation_content[:20000]}"""  # Limiting to first 20000 chars to avoid token limits
@@ -241,11 +245,15 @@ def categorize_presentation(presentation_content):
                     "product": "Unknown"
                 }
         
-        # Ensure all expected keys are present
+        # Ensure all expected keys are present and have non-null values
         expected_keys = ["research_type", "project_type", "client", "product"]
         for key in expected_keys:
-            if key not in categorization:
+            # Check if key exists and has a non-null, non-empty value
+            if key not in categorization or categorization[key] is None or categorization[key] == "":
                 categorization[key] = "Unknown"
+            else:
+                # Convert any non-string values to strings
+                categorization[key] = str(categorization[key])
         
         return categorization
     
