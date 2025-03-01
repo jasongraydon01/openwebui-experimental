@@ -5,3 +5,5 @@ python-dotenv           # To load environment variables from .env file
 requests                # For making HTTP requests
 pydantic                # For data validation with BaseModel and Field
 typing-extensions       # For backward compatibility with Python versions < 3.9
+docling                 # For document generation
+pptxtopdf

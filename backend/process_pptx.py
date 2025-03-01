@@ -2,9 +2,11 @@ import os
 import time
 import hashlib
 import re
+import tempfile
+import subprocess
+import json
 from collections import Counter
 from typing import List, Dict, Any
-import json
 
 # External dependencies
 import pinecone
@@ -13,6 +15,9 @@ import pptx
 import requests
 import sqlite3
 from dotenv import load_dotenv
+# New dependencies
+from pptxtopdf import convert
+from docling.document_converter import DocumentConverter
 
 # -------------------------------
 # Configuration and Initialization
@@ -26,10 +31,8 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 DATABASE_PATH = os.getenv("DATABASE_PATH")
 VLLM_EMBED_URL = os.getenv("VLLM_EMBED_URL")
+VLLM_CHAT_URL = os.getenv("VLLM_CHAT_URL")
 FOLDER_PATH = os.getenv("FOLDER_PATH")
-
-# Default context window size
-DEFAULT_CONTEXT_WINDOW = 1
 
 # Validate critical environment variables
 if not PINECONE_API_KEY:
@@ -42,6 +45,8 @@ if not FOLDER_PATH:
     raise ValueError("Folder path is missing. Please set FOLDER_PATH in your .env file.")
 if not VLLM_EMBED_URL:
     raise ValueError("vLLM embed URL is missing. Please set VLLM_EMBED_URL in your .env file.")
+if not VLLM_CHAT_URL:
+    raise ValueError("vLLM chat URL is missing. Please set VLLM_CHAT_URL in your .env file.")
 
 # Initialize Pinecone client
 pc = pinecone.Pinecone(api_key=PINECONE_API_KEY)
@@ -81,7 +86,11 @@ def init_database():
         file_hash TEXT,
         last_modified REAL,
         last_processed REAL,
-        slide_count INTEGER
+        slide_count INTEGER,
+        research_type TEXT,
+        project_type TEXT,
+        client TEXT,
+        product TEXT
     )
     ''')
     
@@ -92,10 +101,27 @@ def init_database():
         file_name TEXT,
         slide_number INTEGER,
         content TEXT,
+        summary TEXT,
         keywords TEXT,
+        raw_json TEXT,
         FOREIGN KEY (file_name) REFERENCES file_log (file_name) ON DELETE CASCADE
     )
     ''')
+    
+    # Check for and add new columns if needed
+    columns_to_add = {
+        "file_log": ["research_type", "project_type", "client", "product"],
+        "slides": ["summary", "raw_json"]
+    }
+    
+    for table, new_columns in columns_to_add.items():
+        c.execute(f"PRAGMA table_info({table})")
+        existing_columns = [column[1] for column in c.fetchall()]
+        
+        for column in new_columns:
+            if column not in existing_columns:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+                print(f"Added {column} column to {table} table")
     
     conn.commit()
     conn.close()
@@ -148,7 +174,228 @@ def check_for_removed_files():
     return removed_files
 
 # -------------------------------
-# File Processing Functions
+# New LLM Functions
+# -------------------------------
+
+def categorize_presentation(presentation_content):
+    """
+    Categorize a presentation based on its content using an LLM.
+    
+    Args:
+        presentation_content: A string containing the content of the entire presentation
+        
+    Returns:
+        A dictionary with categorization information
+    """
+    # Prepare the prompt for the LLM
+    prompt = f"""
+    Analyze the following presentation content and categorize it across these dimensions:
+    - Research Type: Qualitative or Quantitative
+    - Project Type: Segmentation, ATU, Demand Study, Message Testing, etc.
+    - Client: Identify the pharmaceutical client (e.g., Pfizer, JNJ, etc.)
+    - Product: Identify the product (e.g., Spravato, Fintepla, etc.)
+    
+    Return your analysis in JSON format with these four keys: "research_type", "project_type", "client", "product". 
+    
+    Presentation Content:
+    {presentation_content[:20000]}  # Limiting to first 20000 chars to avoid token limits
+    """
+    
+    try:
+        # Use the vLLM API to get the categorization
+        payload = {
+            "prompt": prompt,
+            "model": "meta-llama/Llama-3.1-8B",
+            "temperature": 0.2,  # Low temperature for more consistent results
+            "max_tokens": 500
+        }
+        response = requests.post(VLLM_CHAT_URL, json=payload, timeout=60)
+        response.raise_for_status()
+        
+        # Parse the response to extract the JSON
+        llm_response = response.json().get("text", "") 
+        
+        # Extract JSON from the response
+        try:
+            json_str = llm_response.strip()
+            if json_str.startswith('```json'):
+                json_str = json_str.replace('```json', '').replace('```', '')
+            elif json_str.startswith('```'):
+                json_str = json_str.replace('```', '')
+            categorization = json.loads(json_str.strip())
+        except json.JSONDecodeError:
+            # Fallback: try to extract JSON-like structure from text
+            import re
+            json_pattern = r'{\s*"[^"]+"\s*:\s*"[^"]+"\s*,\s*"[^"]+"\s*:\s*"[^"]+"\s*,\s*"[^"]+"\s*:\s*"[^"]+"\s*,\s*"[^"]+"\s*:\s*"[^"]+"\s*}'
+            match = re.search(json_pattern, llm_response)
+            if match:
+                categorization = json.loads(match.group(0))
+            else:
+                # If all else fails, create a default categorization
+                categorization = {
+                    "research_type": "Unknown",
+                    "project_type": "Unknown",
+                    "client": "Unknown",
+                    "product": "Unknown"
+                }
+        
+        # Ensure all expected keys are present
+        expected_keys = ["research_type", "project_type", "client", "product"]
+        for key in expected_keys:
+            if key not in categorization:
+                categorization[key] = "Unknown"
+        
+        return categorization
+    
+    except Exception as e:
+        print(f"Error categorizing presentation: {e}")
+        # Return default categorization on error
+        return {
+            "research_type": "Unknown",
+            "project_type": "Unknown",
+            "client": "Unknown",
+            "product": "Unknown"
+        }
+
+def summarize_slide(slide_content):
+    """
+    Generate a concise summary of a slide using an LLM.
+    
+    Args:
+        slide_content: A dictionary containing the slide's content
+        
+    Returns:
+        A string containing the summary
+    """
+    # Prepare the content for summarization
+    title = slide_content.get("title", "")
+    text = slide_content.get("text", "")
+    
+    # Convert tables to text representation
+    table_text = ""
+    for table in slide_content.get("tables", []):
+        for row in table:
+            table_text += " | ".join(row) + "\n"
+    
+    # Combine all content
+    full_content = f"Title: {title}\n\nContent: {text}\n\nTables: {table_text}"
+    
+    # Prepare the prompt for the LLM
+    prompt = f"""
+    Create a concise yet comprehensive summary of the following slide. Follow these guidelines:
+
+    1. Provide a clear overview of the main points and insights
+    2. For any numerical data, statistics or percentages, quote them EXACTLY as they appear in the original text
+       Example format: "22% of HCPs selected yes for xyz"
+    3. Preserve all specific metrics, numbers and quantitative findings in their original form
+    
+    Slide Content:
+    {full_content}
+    
+    Summary:
+    """
+    
+    try:
+        # Use the vLLM API to get the summary
+        payload = {
+            "prompt": prompt,
+            "model": "meta-llama/Llama-3.1-8B",
+            "temperature": 0.2  # Lower temperature for more precise data extraction
+        }
+        response = requests.post(VLLM_CHAT_URL, json=payload, timeout=30)
+        response.raise_for_status()
+        
+        # Extract the summary from the response
+        summary = response.json().get("text", "").strip()
+        
+        return summary
+    
+    except Exception as e:
+        print(f"Error summarizing slide: {e}")
+        # Return original text as fallback
+        return f"Title: {title}\n\n{text[:500]}..."
+
+# -------------------------------
+# New File Processing Functions
+# -------------------------------
+
+def extract_pptx_content_enhanced(pptx_path):
+    """
+    Extract content from PowerPoint file using pptxtopdf and docling for improved accuracy.
+    
+    Args:
+        pptx_path: Path to the PowerPoint file
+        
+    Returns:
+        A list of dictionaries, each containing information about a slide
+    """
+    slides_data = []
+    
+    try:
+        # Step 1: Convert PPTX to PDF using pptxtopdf
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as pdf_file:
+            pdf_path = pdf_file.name
+        
+        # Convert PPTX to PDF
+        convert(pptx_path, pdf_path)
+        
+        # Step 2: Use DocumentConverter to process the PDF
+        converter = DocumentConverter()
+        result = converter.convert(pdf_path)
+        
+        # Step 3: Extract content from the document
+        pages = result.document.pages
+        
+        for i, page in enumerate(pages):
+            slide_number = i + 1
+            
+            # Extract title (first heading or first text block)
+            slide_title = ""
+            for block in page.blocks:
+                if block.type == "heading" or (not slide_title and block.type == "text"):
+                    slide_title = block.text
+                    break
+            
+            # Extract all text content
+            slide_text = "\n".join([block.text for block in page.blocks if block.type == "text" or block.type == "heading"])
+            
+            # Extract tables
+            tables = []
+            for block in page.blocks:
+                if block.type == "table":
+                    table_data = []
+                    for row in block.rows:
+                        table_row = [cell.text for cell in row.cells]
+                        table_data.append(table_row)
+                    tables.append(table_data)
+            
+            # Store the raw page data as JSON
+            raw_json = json.dumps(page.to_dict() if hasattr(page, "to_dict") else {})
+            
+            slides_data.append({
+                "slide_number": slide_number,
+                "title": slide_title or f"Slide {slide_number}",
+                "text": slide_text,
+                "tables": tables,
+                "raw_json": raw_json
+            })
+        
+        # Clean up temporary file
+        os.unlink(pdf_path)
+        
+    except Exception as e:
+        print(f"Error in enhanced extraction for {pptx_path}: {e}")
+        # Fall back to the original extraction method
+        print(f"Falling back to original extraction method for {pptx_path}")
+        slides_data = extract_pptx_content(pptx_path)
+        # Add raw_json field with empty value
+        for slide in slides_data:
+            slide["raw_json"] = "{}"
+    
+    return slides_data
+
+# -------------------------------
+# Original File Processing Functions (Updated)
 # -------------------------------
 
 def get_file_hash(file_path):
@@ -189,7 +436,8 @@ def extract_pptx_content(pptx_path):
             "slide_number": i + 1,
             "title": slide_title,
             "text": slide_text,
-            "tables": tables
+            "tables": tables,
+            "raw_json": "{}"  # Empty raw_json for compatibility
         })
     
     return slides_data
@@ -255,88 +503,48 @@ def generate_embedding(text):
         print(f"Error generating embedding: {e}")
         raise
 
-def process_slide_with_context(slides_data, current_index, file_name, context_window=1):
-    """Process a slide with context from adjacent slides.
+def process_slide(slide, file_name):
+    """Process a single slide without context.
     
     Args:
-        slides_data: List of all slides in the presentation
-        current_index: Index of the current slide to process
+        slide: The slide data to process
         file_name: Name of the PowerPoint file
-        context_window: Number of slides before/after to include as context
     """
-    current_slide = slides_data[current_index]
-    slide_number = current_slide["slide_number"]
-    slide_text = current_slide["text"]
-    slide_title = current_slide["title"] or f"Slide {slide_number}"
-    table_content = current_slide["tables"]
+    slide_number = slide["slide_number"]
+    slide_text = slide["text"]
+    slide_title = slide["title"] or f"Slide {slide_number}"
+    table_content = slide["tables"]
     
-    # Convert current slide's table content to text
+    # Convert slide's table content to text
     table_text = ""
     for table in table_content:
         table_text += " ".join([" ".join(row) for row in table])
     
-    # Start building the content with the main slide
-    content_parts = []
-    
-    # Add current slide as main content with clear marking
-    main_content = f"Title: {slide_title}\n\nContent: {slide_text}"
+    # Build content for the slide
+    full_content = f"Title: {slide_title}\n\nContent: {slide_text}"
     if table_text:
-        main_content += f"\n\nTables: {table_text}"
+        full_content += f"\n\nTables: {table_text}"
     
-    content_parts.append(f"--- MAIN SLIDE {slide_number} ---\n{main_content}")
-    
-    # Add previous slides context
-    for i in range(max(0, current_index - context_window), current_index):
-        prev_slide = slides_data[i]
-        prev_number = prev_slide["slide_number"]
-        prev_title = prev_slide["title"] or f"Slide {prev_number}"
-        # Include a preview of previous slide content
-        prev_content = f"Title: {prev_title}\n\nPreview: {prev_slide['text'][:150]}..."
-        content_parts.insert(0, f"--- PREVIOUS SLIDE {prev_number} ---\n{prev_content}")
-    
-    # Add next slides context
-    for i in range(current_index + 1, min(len(slides_data), current_index + context_window + 1)):
-        next_slide = slides_data[i]
-        next_number = next_slide["slide_number"]
-        next_title = next_slide["title"] or f"Slide {next_number}"
-        # Include a preview of next slide content
-        next_content = f"Title: {next_title}\n\nPreview: {next_slide['text'][:150]}..."
-        content_parts.append(f"--- NEXT SLIDE {next_number} ---\n{next_content}")
-    
-    # Join all parts to create the final content with context
-    full_content_with_context = "\n\n".join(content_parts)
-    
-    # Extract keywords from current slide only (not from context)
+    # Extract keywords from slide
     keywords = extract_keywords(slide_text, table_content)
     
     # Create vector ID
     vector_id = f"{file_name}_{slide_number}"
     
-    # Track context slides for metadata - ensure they are strings
-    context_slides = []
-    for i in range(max(0, current_index - context_window), current_index):
-        context_slides.append(str(slides_data[i]["slide_number"]))
-    for i in range(current_index + 1, min(len(slides_data), current_index + context_window + 1)):
-        context_slides.append(str(slides_data[i]["slide_number"]))
-    
     return {
         "vector_id": vector_id,
         "slide_number": slide_number,
-        "content": full_content_with_context,
+        "content": full_content,
         "keywords": keywords,
-        "context_slides": context_slides
+        "raw_json": slide.get("raw_json", "{}")  # Include raw JSON
     }
 
 # -------------------------------
-# Main Processing Function
+# Updated Main Processing Function
 # -------------------------------
 
-def process_pptx_files(context_window_size=2):
-    """Main function to process PowerPoint files and update the vector database.
-    
-    Args:
-        context_window_size: Number of slides before/after to include as context
-    """
+def process_pptx_files():
+    """Main function to process PowerPoint files and update the vector database."""
     # Initialize database and check for removed files
     init_database()
     check_for_removed_files()
@@ -347,13 +555,6 @@ def process_pptx_files(context_window_size=2):
     # Connect to database
     conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
-    
-    # Update slides table to include context information if needed
-    c.execute("PRAGMA table_info(slides)")
-    columns = [column[1] for column in c.fetchall()]
-    if "context_slides" not in columns:
-        c.execute("ALTER TABLE slides ADD COLUMN context_slides TEXT")
-        print("Added context_slides column to slides table")
     
     # Process each PowerPoint file in the folder
     for pptx_file in os.listdir(FOLDER_PATH):
@@ -380,29 +581,46 @@ def process_pptx_files(context_window_size=2):
         else:
             print(f"Processing new file: {pptx_file}")
             
-        # Extract content from PowerPoint
-        slides_data = extract_pptx_content(pptx_path)
+        # Extract content from PowerPoint using the enhanced method
+        slides_data = extract_pptx_content_enhanced(pptx_path)
         print(f"Extracted {len(slides_data)} slides from {pptx_file}")
         
-        # Process each slide with context from adjacent slides
-        for i, _ in enumerate(slides_data):
-            processed_slide = process_slide_with_context(slides_data, i, pptx_file, context_window_size)
+        # Categorize the presentation
+        # Combine all slide content for categorization
+        presentation_content = "\n\n".join([
+            f"Slide {slide['slide_number']}: {slide['title']}\n{slide['text']}"
+            for slide in slides_data
+        ])
+        
+        categorization = categorize_presentation(presentation_content)
+        print(f"Categorized {pptx_file} as: {categorization}")
+        
+        # Process each slide individually
+        for slide in slides_data:
+            # Generate summary for the current slide
+            slide_summary = summarize_slide(slide)
             
-            # Generate embedding for the content with context
-            embedding = generate_embedding(processed_slide["content"])
+            # Process slide without context
+            processed_slide = process_slide(slide, pptx_file)
             
-            # Convert context slides list to JSON string for storage
-            context_slides_json = json.dumps(processed_slide.get("context_slides", []))
+            # Add summary to the processed slide
+            processed_slide["summary"] = slide_summary
+            
+            # Generate embedding for the summary rather than the full content
+            embedding = generate_embedding(slide_summary)
             
             # Prepare metadata - ensure all values are of proper types for Pinecone
             metadata = {
                 "file_name": pptx_file,
                 "slide_number": processed_slide["slide_number"],
                 "one_drive_link": f"https://onedrive.com/{pptx_file}",
-                "content_preview": processed_slide["content"][:1000],
+                "content_preview": slide_summary[:1000],  # Use summary for preview
                 "keywords": processed_slide["keywords"],
-                "last_modified": last_modified,
-                "context_slides": processed_slide.get("context_slides", [])  # Already strings from process_slide_with_context
+                "last_modified": float(last_modified),
+                "research_type": categorization["research_type"],
+                "project_type": categorization["project_type"],
+                "client": categorization["client"],
+                "product": categorization["product"]
             }
             
             # Add to vectors batch
@@ -414,24 +632,35 @@ def process_pptx_files(context_window_size=2):
             
             # Store in database
             c.execute(
-                "INSERT INTO slides (vector_id, file_name, slide_number, content, keywords, context_slides) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO slides (vector_id, file_name, slide_number, content, summary, keywords, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     processed_slide["vector_id"],
                     pptx_file,
                     processed_slide["slide_number"],
                     processed_slide["content"],
+                    slide_summary,
                     processed_slide["keywords"],
-                    context_slides_json
+                    processed_slide["raw_json"]
                 )
             )
         
-        # Update file log
+        # Update file log with categorization
         c.execute(
-            "REPLACE INTO file_log (file_name, file_hash, last_modified, last_processed, slide_count) VALUES (?, ?, ?, ?, ?)",
-            (pptx_file, file_hash, last_modified, time.time(), len(slides_data))
+            "REPLACE INTO file_log (file_name, file_hash, last_modified, last_processed, slide_count, research_type, project_type, client, product) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                pptx_file, 
+                file_hash, 
+                last_modified, 
+                time.time(), 
+                len(slides_data),
+                categorization["research_type"],
+                categorization["project_type"],
+                categorization["client"],
+                categorization["product"]
+            )
         )
         
-        print(f"Processed {pptx_file}: {len(slides_data)} slides with context window size {context_window_size}")
+        print(f"Processed {pptx_file}: {len(slides_data)} slides")
     
     # Commit database changes
     conn.commit()
