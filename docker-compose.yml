@@ -63,7 +63,7 @@ services:
       - /home/ubuntu/OneDrive/OneDrive-Test:/app/knowledge_base  # Mount PPTX files
       - ./entrypoint.sh:/app/entrypoint.sh
       - file_log_db:/app/log:rw  # Persist database folder; adjust to accomodate the synced local OneDrive folder
-      - ./test_process:/app/test_process # for testing
+      # - ./test_process:/app/test_process # for testing
     working_dir: /app/backend  # Set the working directory to /app/backend
     entrypoint: ["/bin/bash", "-c", "pip install --no-cache-dir -r requirements.txt && /app/entrypoint.sh"]
     depends_on:
@@ -76,7 +76,7 @@ services:
     environment:
       - DATABASE_PATH=/app/log/file_log.db
       # - FOLDER_PATH=/app/knowledge_base
-      - FOLDER_PATH=/app/test_process
+      - FOLDER_PATH=/app/knowledge_base
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_CHAT_URL=http://vllm-container1:8000/v1/chat/completions
       - VLLM_EMBED_URL=http://vllm-container2:8001/v1/embeddings

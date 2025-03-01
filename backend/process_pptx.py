@@ -193,11 +193,11 @@ def categorize_presentation(presentation_content):
     
     user_message = f"""Analyze the following presentation content and categorize it across these dimensions:
     - Research Type: Qualitative or Quantitative
-    - Project Type: Segmentation, ATU, Demand Study, Message Testing, etc.
-    - Client: Identify the pharmaceutical client (e.g., Pfizer, JNJ, etc.)
-    - Product: Identify the product (e.g., Spravato, Fintepla, etc.)
+    - Project Type: Segmentation, ATU/Tracker, Demand Study, or Message Testing
+    - Client: Pfizer, JNJ, Merck, Astellas, Novartis, Novo Nordisk, Lilly, AstraZeneca, GSK, Sanofi, or Bayer
+    - Product: Fintepla, Spravato, Leqvio, or Zynquista
     
-    IMPORTANT: Always provide a string value for each field. Use "Unknown" if you cannot determine a value.
+    IMPORTANT: Always provide a string value for each field. Only use the categories listed above.Use "Unknown" if you cannot determine a value and/or the category is not listed above.
     Never use null, undefined, or empty values.
     
     Presentation Content:
@@ -321,6 +321,21 @@ def summarize_slide(slide_content):
         print(f"Error summarizing slide: {e}")
         # Return original text as fallback
         return f"Title: {title}\n\n{text[:500]}..."
+
+# def get_onedrive_file_link(file_path):
+#     try:
+#         # Run the onedrive command and capture output
+#         result = subprocess.run(
+#             ["onedrive", "--get-file-link", file_path],
+#             check=True,
+#             stdout=subprocess.PIPE,
+#             stderr=subprocess.PIPE,
+#             text=True
+#         )
+#         return result.stdout.strip()
+#     except subprocess.CalledProcessError as e:
+#         print("Error:", e.stderr.strip())
+#         return None
 
 # -------------------------------
 # File Processing Functions
