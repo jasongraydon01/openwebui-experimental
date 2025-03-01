@@ -63,6 +63,7 @@ services:
       - /home/ubuntu/OneDrive/OneDrive-Test:/app/knowledge_base  # Mount PPTX files
       - ./entrypoint.sh:/app/entrypoint.sh
       - file_log_db:/app/log:rw  # Persist database folder; adjust to accomodate the synced local OneDrive folder
+      - ./test_process:/app/test_process # for testing
     working_dir: /app/backend  # Set the working directory to /app/backend
     entrypoint: ["/bin/bash", "-c", "pip install --no-cache-dir -r requirements.txt && /app/entrypoint.sh"]
     depends_on:
