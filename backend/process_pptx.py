@@ -16,7 +16,6 @@ import requests
 import sqlite3
 from dotenv import load_dotenv
 # New dependencies
-from pptxtopdf import convert
 from docling.document_converter import DocumentConverter
 
 # -------------------------------
@@ -394,6 +393,11 @@ def extract_pptx_content_enhanced(pptx_path):
     
     return slides_data
 
+def convert_pptx_to_pdf(pptx_path, pdf_path):
+    """Convert PPTX to PDF using libreoffice."""
+    libreoffice_path = '/usr/bin/libreoffice'
+    subprocess.run([libreoffice_path, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', os.path.dirname(pdf_path)])
+    print(f'Converted {pptx_path} to {pdf_path}')
 # -------------------------------
 # Original File Processing Functions (Updated)
 # -------------------------------
