@@ -105,6 +105,7 @@ services:
       - RAG_WEB_SEARCH_ENGINE=searchapi
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
+      - DEFAULT_MODELS=HawkGPT
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
