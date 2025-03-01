@@ -2,9 +2,6 @@
 
 set -e  # Exit immediately if any command fails
 
-echo "Installing LibreOffice..."
-apt update && apt install -y libreoffice && apt clean
-
 echo "Initializing the database..."
 python /app/backend/init_db.py
 

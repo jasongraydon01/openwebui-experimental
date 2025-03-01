@@ -323,97 +323,7 @@ def summarize_slide(slide_content):
         return f"Title: {title}\n\n{text[:500]}..."
 
 # -------------------------------
-# New File Processing Functions
-# -------------------------------
-
-def convert_pptx_to_pdf(pptx_path, pdf_path):
-    """Convert PPTX to PDF using LibreOffice."""
-    libreoffice_cmd = 'libreoffice'  # Or use 'soffice' depending on installation
-    output_dir = os.path.dirname(pdf_path)
-
-    subprocess.run([
-        libreoffice_cmd, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', output_dir
-    ], check=True)
-
-    print(f'Converted {pptx_path} to {pdf_path}')
-
-def extract_pptx_content_enhanced(pptx_path):
-    """
-    Extract content from PowerPoint file using pptxtopdf and docling for improved accuracy.
-    
-    Args:
-        pptx_path: Path to the PowerPoint file
-        
-    Returns:
-        A list of dictionaries, each containing information about a slide
-    """
-    slides_data = []
-    
-    try:
-        # Step 1: Convert PPTX to PDF using pptxtopdf
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as pdf_file:
-            pdf_path = pdf_file.name
-        
-        # Convert PPTX to PDF
-        convert_pptx_to_pdf(pptx_path, pdf_path)
-        print(f'Converted {pptx_path} to {pdf_path}')
-        
-        # Step 2: Use DocumentConverter to process the PDF
-        converter = DocumentConverter()
-        result = converter.convert(pdf_path)
-        
-        # Step 3: Extract content from the document
-        pages = result.document.pages
-        
-        for i, page in enumerate(pages):
-            slide_number = i + 1
-            
-            # Extract title (first heading or first text block)
-            slide_title = ""
-            for block in page.blocks:
-                if block.type == "heading" or (not slide_title and block.type == "text"):
-                    slide_title = block.text
-                    break
-            
-            # Extract all text content
-            slide_text = "\n".join([block.text for block in page.blocks if block.type == "text" or block.type == "heading"])
-            
-            # Extract tables
-            tables = []
-            for block in page.blocks:
-                if block.type == "table":
-                    table_data = []
-                    for row in block.rows:
-                        table_row = [cell.text for cell in row.cells]
-                        table_data.append(table_row)
-                    tables.append(table_data)
-            
-            # Store the raw page data as JSON
-            raw_json = json.dumps(page.to_dict() if hasattr(page, "to_dict") else {})
-            
-            slides_data.append({
-                "slide_number": slide_number,
-                "title": slide_title or f"Slide {slide_number}",
-                "text": slide_text,
-                "tables": tables,
-                "raw_json": raw_json
-            })
-        
-        # Clean up temporary file
-        os.unlink(pdf_path)
-        
-    except Exception as e:
-        print(f"Error in enhanced extraction for {pptx_path}: {e}")
-        # Fall back to the original extraction method
-        print(f"Falling back to original extraction method for {pptx_path}")
-        slides_data = extract_pptx_content(pptx_path)
-        # Add raw_json field with empty value
-        for slide in slides_data:
-            slide["raw_json"] = "{}"
-    
-    return slides_data
-# -------------------------------
-# Original File Processing Functions (Updated)
+# File Processing Functions
 # -------------------------------
 
 def get_file_hash(file_path):
@@ -455,7 +365,7 @@ def extract_pptx_content(pptx_path):
             "title": slide_title,
             "text": slide_text,
             "tables": tables,
-            "raw_json": "{}"  # Empty raw_json for compatibility
+            "raw_json": "{}"  # Empty raw_json for future use
         })
     
     return slides_data
@@ -599,8 +509,8 @@ def process_pptx_files():
         else:
             print(f"Processing new file: {pptx_file}")
             
-        # Extract content from PowerPoint using the enhanced method
-        slides_data = extract_pptx_content_enhanced(pptx_path)
+        # Extract content from PowerPoint using the standard method
+        slides_data = extract_pptx_content(pptx_path)
         print(f"Extracted {len(slides_data)} slides from {pptx_file}")
         
         # Categorize the presentation
