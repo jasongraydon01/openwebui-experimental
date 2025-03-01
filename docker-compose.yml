@@ -75,7 +75,8 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_PATH=/app/log/file_log.db
-      - FOLDER_PATH=/app/knowledge_base
+      # - FOLDER_PATH=/app/knowledge_base
+      - FOLDER_PATH=/app/test_process
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_CHAT_URL=http://vllm-container1:8000/v1/chat/completions
       - VLLM_EMBED_URL=http://vllm-container2:8001/v1/embeddings

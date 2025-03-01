@@ -318,6 +318,12 @@ def summarize_slide(slide_content):
 # New File Processing Functions
 # -------------------------------
 
+def convert_pptx_to_pdf(pptx_path, pdf_path):
+    """Convert PPTX to PDF using libreoffice."""
+    libreoffice_path = '/usr/bin/libreoffice'
+    subprocess.run([libreoffice_path, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', os.path.dirname(pdf_path)])
+    print(f'Converted {pptx_path} to {pdf_path}')
+
 def extract_pptx_content_enhanced(pptx_path):
     """
     Extract content from PowerPoint file using pptxtopdf and docling for improved accuracy.
@@ -336,7 +342,8 @@ def extract_pptx_content_enhanced(pptx_path):
             pdf_path = pdf_file.name
         
         # Convert PPTX to PDF
-        convert(pptx_path, pdf_path)
+        convert_pptx_to_pdf(pptx_path, pdf_path)
+        print(f'Converted {pptx_path} to {pdf_path}')
         
         # Step 2: Use DocumentConverter to process the PDF
         converter = DocumentConverter()
@@ -392,12 +399,6 @@ def extract_pptx_content_enhanced(pptx_path):
             slide["raw_json"] = "{}"
     
     return slides_data
-
-def convert_pptx_to_pdf(pptx_path, pdf_path):
-    """Convert PPTX to PDF using libreoffice."""
-    libreoffice_path = '/usr/bin/libreoffice'
-    subprocess.run([libreoffice_path, '--headless', '--convert-to', 'pdf', pptx_path, '--outdir', os.path.dirname(pdf_path)])
-    print(f'Converted {pptx_path} to {pdf_path}')
 # -------------------------------
 # Original File Processing Functions (Updated)
 # -------------------------------
