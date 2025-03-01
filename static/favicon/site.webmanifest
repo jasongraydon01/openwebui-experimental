@@ -1,6 +1,6 @@
 {
-  "name": "Open WebUI",
-  "short_name": "WebUI",
+  "name": "HawkGPT",
+  "short_name": "HawkGPT",
   "icons": [
     {
       "src": "/favicon/web-app-manifest-192x192.png",
