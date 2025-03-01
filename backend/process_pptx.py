@@ -205,7 +205,7 @@ def categorize_presentation(presentation_content):
         # Use the vLLM API to get the categorization
         payload = {
             "prompt": prompt,
-            "model": "meta-llama/Llama-3.1-8B",
+            "model": "Qwen/Qwen2.5-7B-Instruct",
             "temperature": 0.2,  # Low temperature for more consistent results
             "max_tokens": 500
         }
@@ -299,7 +299,7 @@ def summarize_slide(slide_content):
         # Use the vLLM API to get the summary
         payload = {
             "prompt": prompt,
-            "model": "meta-llama/Llama-3.1-8B",
+            "model": "Qwen/Qwen2.5-7B-Instruct",
             "temperature": 0.2  # Lower temperature for more precise data extraction
         }
         response = requests.post(VLLM_CHAT_URL, json=payload, timeout=30)
