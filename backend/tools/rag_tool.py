@@ -1,452 +1,388 @@
 """
-Simple Document RAG Integration Tool for OpenWebUI
-=================================================================
-
-This tool enables simple document retrieval using embeddings and Pinecone
-for semantic search with hybrid keyword-based ranking.
-
-License: Apache 2.0
-
-Requirements:
-    - Python 3.8+
-    - OpenWebui
-    - Pinecone
-    - Requests
+title: Semantic RAG Search Tool
+author: OpenWebUI User
+description: Simple document retrieval using embeddings and Pinecone for semantic search
+required_open_webui_version: 0.4.0
+requirements: pinecone-client, requests
+version: 1.0.0
+licence: Apache 2.0
 """
 
 import os
 import json
-import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, Awaitable
 import requests
 import pinecone
+import time
+from pydantic import BaseModel, Field
+
 
 class Tools:
     """
-    Simple RAG Tool for OpenWebUI using Pinecone vector database
-    
-    This tool provides basic retrieval-augmented generation capabilities using
-    embeddings and Pinecone vector database with hybrid search functionality.
+    Simple Semantic RAG Tool for OpenWebUI
+
+    This class provides document retrieval capabilities through Pinecone
     """
-    
+
     def __init__(self):
-        """Initialize the RAG tool with default configuration."""
-        # Configuration
-        self.embedding_url = os.getenv("VLLM_EMBEDDINGS_URL", "http://localhost:8001/v1/embeddings")
-        self.embedding_model = os.getenv("EMBEDDING_MODEL", "Alibaba-NLP/gte-Qwen2-7B-instruct")
-        self.pinecone_api_key = os.getenv("PINECONE_API_KEY", "")
-        self.pinecone_environment = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
-        self.pinecone_index = os.getenv("PINECONE_INDEX", "openwebui-rag")
-        self.pinecone_namespace = os.getenv("PINECONE_NAMESPACE", "default")
-        self.top_k = int(os.getenv("TOP_K", "5"))
-        self.similarity_threshold = float(os.getenv("SIMILARITY_THRESHOLD", "0.7"))
-        self.keyword_weight = float(os.getenv("KEYWORD_WEIGHT", "0.3"))
-        
+        """Initialize the RAG tool."""
+        self.valves = self.Valves()
+        self.last_emit_time = 0
+
         # HTTP headers
         self.headers = {
             "Content-Type": "application/json",
             "User-Agent": "OpenWebUI-RAG-Tool/1.0",
         }
-        
+
         # Initialize Pinecone client
         self.pinecone_client = None
-        
+        print("RAG Tool initialized")
+
+    class Valves(BaseModel):
+        embedding_url: str = Field(
+            default="http://localhost:8001/v1/embeddings",
+            description="URL for the embedding service",
+        )
+        embedding_model: str = Field(
+            default="Alibaba-NLP/gte-Qwen2-7B-instruct",
+            description="Model to use for embeddings",
+        )
+        pinecone_api_key: str = Field(default="", description="Pinecone API key")
+        pinecone_index: str = Field(
+            default="openwebui-rag", description="Pinecone index name"
+        )
+        pinecone_namespace: str = Field(
+            default="default", description="Pinecone namespace"
+        )
+        top_k: int = Field(default=5, description="Number of results to return")
+        similarity_threshold: float = Field(
+            default=0.7, description="Minimum similarity score to include results"
+        )
+        emit_interval: float = Field(
+            default=2.0, description="Interval in seconds between status updates"
+        )
+        enable_status_indicator: bool = Field(
+            default=True, description="Enable or disable status indicator updates"
+        )
+        debug: bool = Field(
+            default=True,
+            description="Enable debug mode with additional print statements",
+        )
+
+    async def emit_status(
+        self,
+        __event_emitter__: Optional[Callable[[dict], Awaitable[None]]],
+        level: str,
+        message: str,
+        done: bool,
+    ):
+        """Sends status updates to OpenWebUI."""
+        if self.valves.debug:
+            print(f"STATUS [{level}]: {message}")
+
+        if (
+            __event_emitter__
+            and self.valves.enable_status_indicator
+            and (time.time() - self.last_emit_time >= self.valves.emit_interval or done)
+        ):
+            await __event_emitter__(
+                {
+                    "type": "status",
+                    "data": {
+                        "status": "complete" if done else "in_progress",
+                        "level": level,
+                        "description": message,
+                        "done": done,
+                    },
+                }
+            )
+            self.last_emit_time = time.time()
+
+    async def emit_message(
+        self,
+        __event_emitter__: Optional[Callable[[dict], Awaitable[None]]],
+        content: str,
+    ):
+        """Sends a message to OpenWebUI chat."""
+        if self.valves.debug:
+            print(f"MESSAGE: {content}")
+
+        if __event_emitter__:
+            await __event_emitter__(
+                {
+                    "type": "message",
+                    "data": {"content": content},
+                }
+            )
+
     def _setup_pinecone(self) -> bool:
         """Initialize the Pinecone client if not already initialized."""
-        if not self.pinecone_api_key:
-            print("WARNING: PINECONE_API_KEY environment variable not set")
-            return False
-            
-        if self.pinecone_client is None:
-            try:
-                pinecone.init(
-                    api_key=self.pinecone_api_key,
-                    environment=self.pinecone_environment
+        try:
+            # Initialize Pinecone client
+            pc = pinecone.Pinecone(api_key=self.valves.pinecone_api_key)
+
+            # Create index if it doesn't exist
+            if not pc.has_index(self.valves.pinecone_index):
+                pc.create_index(
+                    name=self.valves.pinecone_index,
+                    dimension=3584,
+                    metric="cosine",
+                    spec=ServerlessSpec(
+                        cloud="aws", region=self.valves.pinecone_environment
+                    ),
                 )
-                self.pinecone_client = pinecone.Index(self.pinecone_index)
-                return True
-            except Exception as e:
-                print(f"ERROR: Failed to initialize Pinecone: {str(e)}")
-                return False
-        return True
-    
+                print(f"Created new Pinecone index: {self.valves.pinecone_index}")
+
+            # Wait for index to be ready
+            while not pc.describe_index(self.valves.pinecone_index).status["ready"]:
+                print("Waiting for Pinecone index to be ready...")
+                time.sleep(1)
+
+            # Connect to the index
+            self.pinecone_client = pc.Index(self.valves.pinecone_index)
+            print(f"Connected to Pinecone index: {self.valves.pinecone_index}")
+
+            return True
+        except Exception as e:
+            print(f"ERROR: Failed to initialize Pinecone: {str(e)}")
+            return False
+
     def _get_embeddings(self, text: str) -> List[float]:
         """Generate embeddings for the input text using the embedding API."""
         if not text or not isinstance(text, str):
+            print("ERROR: Empty or invalid text provided for embedding")
             raise ValueError("Empty or invalid text provided for embedding")
-            
+
         payload = {
             "input": text,
-            "model": self.embedding_model,
+            "model": self.valves.embedding_model,
         }
-        
+
+        print(
+            f"Getting embeddings for text: '{text[:50]}...' using model: {self.valves.embedding_model}"
+        )
+        print(f"Embedding URL: {self.valves.embedding_url}")
+
         response = requests.post(
-            self.embedding_url,
-            json=payload,
-            headers=self.headers,
-            timeout=30
+            self.valves.embedding_url, json=payload, headers=self.headers, timeout=30
         )
         response.raise_for_status()
         data = response.json()
-        
+
         if "data" in data and len(data["data"]) > 0:
-            return data["data"][0]["embedding"]
+            embedding = data["data"][0]["embedding"]
+            print(f"Successfully generated embedding with {len(embedding)} dimensions")
+            return embedding
         else:
+            print("ERROR: No embedding found in response")
+            print(f"Response data: {data}")
             raise ValueError("No embedding found in response")
-            
-    def _extract_keywords(self, query: str) -> List[str]:
-        """Extract potential keywords from a user query."""
-        stopwords = {'a', 'an', 'the', 'and', 'or', 'but', 'if', 'because', 'as', 'what', 
-                    'which', 'this', 'that', 'these', 'those', 'then', 'just', 'so'}
-        
-        # Normalize and tokenize
-        query = query.lower()
-        query = re.sub(r'[^\w\s]', ' ', query)
-        words = query.split()
-        
-        # Filter and keep meaningful words
-        keywords = [word for word in words if word not in stopwords and len(word) > 3]
-        return keywords[:10]  # Limit to 10 keywords
-    
-    def _format_results(self, results: List[Dict]) -> str:
-        """Format the retrieved documents into a user-friendly output with citation-friendly format."""
-        if not results:
-            return "No relevant documents found."
-            
-        formatted_output = "### Retrieved Documents\n\n"
-        citation_info = []
-        
-        for i, doc in enumerate(results):
-            source_num = i + 1
-            metadata = doc.get("metadata", {})
-            
-            # Extract document information
-            doc_type = metadata.get("doc_type", "Document")
-            file_name = metadata.get("file_name", "Unknown")
-            section_id = metadata.get("section_id", metadata.get("page_number", metadata.get("slide_number", "?")))
-            content = metadata.get("content_preview", "No content available")
-            keywords = metadata.get("keywords", "")
-            source_link = metadata.get("source_link", metadata.get("one_drive_link", "#"))
-            
-            # Additional metadata fields
-            last_modified = metadata.get("last_modified", "")
-            research_type = metadata.get("research_type", "")
-            project_type = metadata.get("project_type", "")
-            client = metadata.get("client", "")
-            product = metadata.get("product", "")
-            
-            # Format document entry with citation marker
-            formatted_output += f"### [Source {source_num}] {doc_type} - {file_name} (Section {section_id})\n\n"
-            formatted_output += f"{content}\n\n"
-            
-            # Add metadata information
-            metadata_fields = []
-            
-            if keywords:
-                metadata_fields.append(f"**Keywords**: {keywords}")
-                
-            if last_modified:
-                # Convert timestamp to readable date if it's a number
-                if isinstance(last_modified, (int, float)):
-                    from datetime import datetime
-                    date_str = datetime.fromtimestamp(last_modified).strftime("%Y-%m-%d %H:%M")
-                    metadata_fields.append(f"**Last Modified**: {date_str}")
-                else:
-                    metadata_fields.append(f"**Last Modified**: {last_modified}")
-                    
-            if research_type:
-                metadata_fields.append(f"**Research Type**: {research_type}")
-                
-            if project_type:
-                metadata_fields.append(f"**Project Type**: {project_type}")
-                
-            if client:
-                metadata_fields.append(f"**Client**: {client}")
-                
-            if product:
-                metadata_fields.append(f"**Product**: {product}")
-                
-            formatted_output += "\n".join(metadata_fields) + "\n\n"
-            
-            # Ensure the source link is formatted as a clickable URL
-            formatted_output += f"**Source Link**: [Link]({source_link})\n\n"
-            
-            # Add to citation info for easy reference
-            citation = {
-                "number": source_num,
-                "title": file_name,
-                "type": doc_type,
-                "section": section_id,
-                "link": source_link
-            }
-            citation_info.append(citation)
-            
-        # Add citation guide for LLMs
-        formatted_output += "\n### Citation Guide for Models\n"
-        formatted_output += "When using information from these sources, please cite them as follows:\n"
-        formatted_output += "- For inline citations: [Source X]\n"
-        formatted_output += "- For linked citations: [Source X](link)\n"
-        formatted_output += "- Example: According to [Source 1](link), the project timeline is scheduled for Q3.\n\n"
-        
-        formatted_output += "### Citation References\n"
-        for citation in citation_info:
-            formatted_output += f"[Source {citation['number']}]: {citation['title']} ({citation['type']}, Section {citation['section']}) - [Link]({citation['link']})\n"
-        
-        return formatted_output
-    
-    def format_for_llm(self, query: str, search_results: str) -> str:
-        """
-        Format search results into a complete response template for language models.
-        
-        :param query: The original user query
-        :param search_results: The formatted search results
-        :return: A complete template for the LLM to fill in with its response
-        """
-        prompt = f"""
-### Query
-{query}
 
-### Available Information
-{search_results}
-
-### Instructions for Answering
-1. Answer the query based ONLY on the information provided above.
-2. If the information doesn't contain the answer, acknowledge this limitation.
-3. Cite your sources using [Source X] notation, where X is the source number.
-4. For key information, include the source link on first mention: [Source X](link).
-5. Be concise, accurate, and helpful.
-
-### Answer
-"""
-        return prompt
-    
-    def rag_search(self, query: str, namespace: Optional[str] = None, format_for_llm: bool = False) -> str:
+    async def rag_search(
+        self,
+        query: str,
+        __event_emitter__: Optional[Callable[[dict], Awaitable[None]]] = None,
+    ) -> Dict[str, Any]:
         """
-        Perform a hybrid search using both semantic similarity and keyword matching.
-        
+        Perform a semantic search using embeddings.
+
         :param query: The user query to search for
-        :param namespace: Optional Pinecone namespace to use (defaults to configured namespace)
-        :param format_for_llm: Whether to format the results as a prompt for language models
-        :return: Formatted results containing the retrieved documents
+        :param __event_emitter__: Optional event emitter for status updates
+        :return: Dictionary with response and sources
         """
         try:
-            # Initialize Pinecone if needed
+            print(f"========== RAG SEARCH STARTING FOR: '{query}' ==========")
+            await self.emit_status(
+                __event_emitter__, "info", "Initializing RAG search...", False
+            )
+
+            # Setup Pinecone
+            await self.emit_status(
+                __event_emitter__, "info", "Connecting to Pinecone...", False
+            )
             if not self._setup_pinecone():
-                return "RAG search failed: Could not connect to Pinecone database."
-                
-            # Use the specified namespace or default
-            namespace = namespace or self.pinecone_namespace
-            
-            # 1. Get embedding for the query
+                error_msg = "Could not connect to Pinecone database. Please check your configuration."
+                await self.emit_status(__event_emitter__, "error", error_msg, True)
+                return {"response": error_msg, "sources": []}
+
+            # Get embedding for the query
+            await self.emit_status(
+                __event_emitter__, "info", "Generating embeddings...", False
+            )
             embedding = self._get_embeddings(query)
-            
-            # 2. Extract keywords for hybrid search
-            keywords = self._extract_keywords(query)
-            
-            # 3. Query Pinecone for similar documents
-            query_response = self.pinecone_client.query(
-                vector=embedding,
-                top_k=self.top_k * 2,  # Get more results for reranking
-                namespace=namespace,
-                include_metadata=True
-            )
-            
-            # 4. Hybrid reranking with keywords
-            results = []
-            for match in query_response.matches:
-                # Skip if below similarity threshold
-                if match.score < self.similarity_threshold:
-                    continue
-                    
-                metadata = match.metadata
-                
-                # Calculate keyword match score
-                keyword_score = 0
-                if keywords and "keywords" in metadata:
-                    for keyword in keywords:
-                        if keyword.lower() in metadata["keywords"].lower():
-                            keyword_score += 1
-                    if "content_preview" in metadata:
-                        for keyword in keywords:
-                            if keyword.lower() in metadata["content_preview"].lower():
-                                keyword_score += 0.5
-                
-                # Normalize keyword score
-                keyword_score = keyword_score / max(len(keywords), 1)
-                
-                # Calculate hybrid score
-                hybrid_score = (1 - self.keyword_weight) * match.score + self.keyword_weight * keyword_score
-                
-                # Add to results
-                results.append({
-                    "id": match.id,
-                    "score": match.score,
-                    "keyword_score": keyword_score,
-                    "hybrid_score": hybrid_score,
-                    "metadata": metadata
-                })
-            
-            # 5. Sort by hybrid score and limit to top_k
-            results.sort(key=lambda x: x["hybrid_score"], reverse=True)
-            results = results[:self.top_k]
-            
-            # 6. Format results
-            formatted_results = self._format_results(results)
-            
-            # 7. Format for LLM if requested
-            if format_for_llm:
-                return self.format_for_llm(query, formatted_results)
-            
-            return formatted_results
-            
-        except Exception as e:
-            return f"RAG search failed: {str(e)}"
-    
-    def search_by_keywords(self, keywords: List[str], namespace: Optional[str] = None) -> str:
-        """
-        Search for documents by specific keywords.
-        
-        :param keywords: List of keywords to search for
-        :param namespace: Optional Pinecone namespace to use
-        :return: Formatted results containing the retrieved documents
-        """
-        try:
-            # Initialize Pinecone if needed
-            if not self._setup_pinecone():
-                return "Keyword search failed: Could not connect to Pinecone database."
-                
-            # Use the specified namespace or default
-            namespace = namespace or self.pinecone_namespace
-            
-            # Convert keywords to embedding for semantic search
-            keyword_string = " ".join(keywords)
-            embedding = self._get_embeddings(keyword_string)
-            
+
             # Query Pinecone
+            await self.emit_status(
+                __event_emitter__, "info", "Searching for relevant documents...", False
+            )
+            print(
+                f"Querying Pinecone with top_k={self.valves.top_k} in namespace={self.valves.pinecone_namespace}"
+            )
+
             query_response = self.pinecone_client.query(
+                namespace=self.valves.pinecone_namespace,
                 vector=embedding,
-                top_k=self.top_k * 2,
-                namespace=namespace,
-                include_metadata=True
+                top_k=self.valves.top_k,
+                include_metadata=True,
             )
-            
-            # Process and rerank results by keyword matches
+
+            print(f"Received {len(query_response['matches'])} matches from Pinecone")
+
+            # Process results
             results = []
-            for match in query_response.matches:
-                metadata = match.metadata
-                
-                # Calculate keyword match score
-                keyword_score = 0
-                if "keywords" in metadata:
-                    for keyword in keywords:
-                        if keyword.lower() in metadata["keywords"].lower():
-                            keyword_score += 1
-                if "content_preview" in metadata:
-                    for keyword in keywords:
-                        if keyword.lower() in metadata["content_preview"].lower():
-                            keyword_score += 0.5
-                
-                # Normalize score
-                keyword_score = keyword_score / max(len(keywords), 1)
-                
-                # Calculate hybrid score with higher weight on keyword matches
-                hybrid_score = (1 - self.keyword_weight * 2) * match.score + (self.keyword_weight * 2) * keyword_score
-                
-                results.append({
-                    "id": match.id,
-                    "score": match.score,
-                    "keyword_score": keyword_score,
-                    "hybrid_score": hybrid_score,
-                    "metadata": metadata
-                })
-            
-            # Sort by hybrid score and limit to top_k
-            results.sort(key=lambda x: x["hybrid_score"], reverse=True)
-            results = results[:self.top_k]
-            
-            # Format and return results
-            return self._format_results(results)
-            
-        except Exception as e:
-            return f"Keyword search failed: {str(e)}"
-    
-    def list_documents(self, doc_type: Optional[str] = None) -> str:
-        """
-        List available documents in the vector database, optionally filtered by type.
-        
-        :param doc_type: Optional document type to filter by (e.g., "pdf", "powerpoint")
-        :return: A formatted list of documents
-        """
-        try:
-            # Initialize Pinecone if needed
-            if not self._setup_pinecone():
-                return "Could not connect to Pinecone database."
-                
-            # Get index stats
-            stats = self.pinecone_client.describe_index_stats()
-            
-            # Get total vector count
-            namespace_stats = stats.get('namespaces', {}).get(self.pinecone_namespace, {})
-            vector_count = namespace_stats.get('vector_count', 0)
-            
-            if vector_count == 0:
-                return "No documents found in the vector database."
-                
-            # Fetch a sample of vectors to analyze
-            fetch_limit = min(100, vector_count)
-            fetch_response = self.pinecone_client.fetch(
-                ids=[], 
-                namespace=self.pinecone_namespace, 
-                limit=fetch_limit
+            sources = []
+
+            for i, match in enumerate(query_response["matches"]):
+                print(f"Match {i+1}: ID={match['id']}, Score={match['score']}")
+
+                # Skip if below similarity threshold
+                if match["score"] < self.valves.similarity_threshold:
+                    print(
+                        f"  Skipping match {i+1} with score {match['score']} (below threshold)"
+                    )
+                    continue
+
+                metadata = match["metadata"]
+                print(f"  Metadata: {json.dumps(metadata)[:200]}...")
+
+                # Extract document information
+                doc_type = metadata.get("doc_type", "Document")
+                file_name = metadata.get("file_name", "Unknown")
+                section_id = metadata.get(
+                    "section_id",
+                    metadata.get("page_number", metadata.get("slide_number", "?")),
+                )
+                content = metadata.get("content_preview", "No content available")
+                source_link = metadata.get(
+                    "source_link", metadata.get("one_drive_link", "#")
+                )
+
+                # Format source reference
+                source_ref = f"{doc_type} - {file_name} (Section {section_id})"
+                sources.append(source_ref)
+                print(f"  Adding source: {source_ref}")
+
+                # Add to results with score and metadata
+                results.append(
+                    {
+                        "id": match["id"],
+                        "score": match["score"],
+                        "content": content,
+                        "source": source_ref,
+                        "link": source_link,
+                    }
+                )
+
+            # Prepare the context from results
+            if results:
+                context_parts = []
+
+                for r in results:
+                    context_parts.append(f"From {r['source']}:\n{r['content']}")
+                    # Add citation event if using that feature
+                    if __event_emitter__:
+                        print(f"  Emitting citation for source: {r['source']}")
+                        await __event_emitter__(
+                            {
+                                "type": "citation",
+                                "data": {
+                                    "document": [r["content"]],
+                                    "metadata": [
+                                        {
+                                            "date_accessed": time.strftime(
+                                                "%Y-%m-%d %H:%M:%S"
+                                            ),
+                                            "source": r["source"],
+                                        }
+                                    ],
+                                    "source": {"name": r["source"], "url": r["link"]},
+                                },
+                            }
+                        )
+
+                context = "\n\n".join(context_parts)
+                print(
+                    f"Generated context with {len(context)} characters from {len(results)} sources"
+                )
+
+                response = {"response": context, "sources": sources}
+            else:
+                print("No matching documents found")
+                response = {
+                    "response": "No relevant documents found for your query.",
+                    "sources": [],
+                }
+
+            await self.emit_status(
+                __event_emitter__, "info", "RAG search complete", True
             )
-            
-            # Collect unique document information
-            documents = {}
-            for vector_id, vector_data in fetch_response.get('vectors', {}).items():
-                metadata = vector_data.get('metadata', {})
-                
-                # Parse document name from ID
-                id_parts = vector_id.split('_')
-                if len(id_parts) > 1:
-                    doc_name = '_'.join(id_parts[:-1])
-                    doc_type_value = metadata.get('doc_type', 'unknown')
-                    
-                    if doc_type and doc_type.lower() not in doc_type_value.lower():
-                        continue
-                        
-                    if doc_name not in documents:
-                        documents[doc_name] = {
-                            'type': doc_type_value,
-                            'sections': 1
-                        }
-                    else:
-                        documents[doc_name]['sections'] += 1
-            
-            # Format results
-            if not documents:
-                return f"No{' ' + doc_type if doc_type else ''} documents found in the vector database."
-                
-            result = "### Available Documents\n\n"
-            
-            # Group by document type
-            by_type = {}
-            for name, info in documents.items():
-                doc_type = info['type']
-                if doc_type not in by_type:
-                    by_type[doc_type] = []
-                by_type[doc_type].append({
-                    'name': name,
-                    'sections': info['sections']
-                })
-            
-            # Format by type
-            for doc_type, docs in sorted(by_type.items()):
-                result += f"#### {doc_type.title()} Documents\n\n"
-                for doc in sorted(docs, key=lambda x: x['name']):
-                    result += f"- {doc['name']} ({doc['sections']} sections)\n"
-                result += "\n"
-                
-            return result
-            
+            print("========== RAG SEARCH COMPLETED ==========")
+            return response
+
         except Exception as e:
-            return f"Error listing documents: {str(e)}"
+            error_message = f"RAG search failed: {str(e)}"
+            print(f"ERROR: {error_message}")
+
+            # Print exception traceback for debugging
+            import traceback
+
+            print(traceback.format_exc())
+
+            await self.emit_status(__event_emitter__, "error", error_message, True)
+            print("========== RAG SEARCH FAILED ==========")
+            return {"response": error_message, "sources": []}
+
+    async def pipe(
+        self,
+        body: dict,
+        __user__: Optional[dict] = None,
+        __event_emitter__: Optional[Callable[[dict], Awaitable[None]]] = None,
+        __event_call__: Optional[Callable[[dict], Awaitable[dict]]] = None,
+    ):
+        """Process user query and return RAG results in the format expected by OpenWebUI."""
+        try:
+            print("========== RAG PIPE STARTING ==========")
+            print(f"Received request body: {json.dumps(body)[:500]}...")
+
+            # Extract the query from the request body - handle both formats
+            query = None
+
+            # Direct query parameter
+            if "query" in body:
+                query = body["query"]
+                print(f"Found query directly in request body: {query}")
+
+            # Messages array
+            elif "messages" in body and body["messages"]:
+                messages = body["messages"]
+                if messages:
+                    query = messages[-1].get("content", "")
+                    print(f"Extracted query from messages: {query}")
+
+            # No query found
+            if not query:
+                error_msg = "No query found in the request body"
+                print(f"ERROR: {error_msg}")
+                await self.emit_status(__event_emitter__, "error", error_msg, True)
+                return {"response": error_msg, "sources": []}
+
+            # Perform the RAG search
+            result = await self.rag_search(query, __event_emitter__)
+            print("========== RAG PIPE COMPLETED ==========")
+            return result
+
+        except Exception as e:
+            error_message = f"RAG pipe failed: {str(e)}"
+            print(f"ERROR: {error_message}")
+
+            # Print exception traceback for debugging
+            import traceback
+
+            print(traceback.format_exc())
+
+            if __event_emitter__:
+                await self.emit_status(__event_emitter__, "error", error_message, True)
+
+            print("========== RAG PIPE FAILED ==========")
+            return {"response": error_message, "sources": []}
