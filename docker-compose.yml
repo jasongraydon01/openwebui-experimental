@@ -91,7 +91,11 @@ services:
     volumes:
       - open-webui:/app/backend/data
       - /home/ubuntu/openwebui-experimental/static/static:/app/build/static
-      - /home/ubuntu/openwebui-experimental/static/static:/app/backend/open_webui/static
+      - /home/ubuntu/openwebui-experimental/static/static/favicon.png:/app/backend/open_webui/static/favicon.png
+      - /home/ubuntu/openwebui-experimental/static/static/test.md:/app/backend/open_webui/static/test.md
+      - /home/ubuntu/openwebui-experimental/static/static/loader.js:/app/backend/open_webui/static/loader.js
+      - /home/ubuntu/openwebui-experimental/static/static/splash.png:/app/backend/open_webui/static/splash.png
+      - /home/ubuntu/openwebui-experimental/static/static/splash-dark.png:/app/backend/open_webui/static/splash-dark.png
     depends_on:
       vllm-model1:
         condition: service_healthy
