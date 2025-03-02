@@ -92,7 +92,7 @@ services:
       - "3100:8080"  # OpenWebUI frontend
     volumes:
       - open-webui:/app/backend/data
-      - ./static:/app/custom_static
+      - ./home/ubuntu/openwebui-experimental/static:/app/custom_static
     depends_on:
       vllm-model1:
         condition: service_healthy
