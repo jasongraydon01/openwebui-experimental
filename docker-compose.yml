@@ -97,6 +97,9 @@ services:
       vllm-model2:
         condition: service_healthy
     environment:
+      - ENV=dev
+      - CUSTOM_NAME=HawkGPT
+      - WEBUI_NAME=HawkGPT
       - ENABLE_OPENAI_API=True
       - OPENAI_API_BASE_URL=http://vllm-model1:8000/v1
       - OPENAI_API_KEY=EMPTY
@@ -105,7 +108,7 @@ services:
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
       - DEFAULT_MODELS=HawkGPT
-      - STATIC_DIR=./custom_static
+      - STATIC_DIR=/app/backend/custom_static
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
