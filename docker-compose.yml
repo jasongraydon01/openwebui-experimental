@@ -107,7 +107,7 @@ services:
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
       - DEFAULT_MODELS=HawkGPT
-      - STATIC_DIR=/app/custom_build/static
+      # - STATIC_DIR=/app/custom_build
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
