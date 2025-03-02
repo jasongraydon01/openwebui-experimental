@@ -91,6 +91,7 @@ services:
     volumes:
       - open-webui:/app/backend/data
       - /home/ubuntu/openwebui-experimental/static/static:/app/build/static
+      - /home/ubuntu/openwebui-experimental/static/static:/app/backend/open_webui/static
     depends_on:
       vllm-model1:
         condition: service_healthy
