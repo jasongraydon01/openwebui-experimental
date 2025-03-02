@@ -92,7 +92,7 @@ services:
       - "3100:8080"  # OpenWebUI frontend
     volumes:
       - open-webui:/app/backend/data
-      - ./home/ubuntu/openwebui-experimental/static:/app/custom_static
+      - ./home/ubuntu/openwebui-experimental/build:/app/custom_build
     depends_on:
       vllm-model1:
         condition: service_healthy
@@ -107,7 +107,6 @@ services:
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
       - DEFAULT_MODELS=HawkGPT
-      - STATIC_DIR=/app/custom_static
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
