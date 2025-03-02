@@ -96,8 +96,8 @@ services:
       - /home/ubuntu/openwebui-experimental/static/static/loader.js:/app/backend/open_webui/static/loader1.js
       - /home/ubuntu/openwebui-experimental/static/static/splash.png:/app/backend/open_webui/static/splash1.png
       - /home/ubuntu/openwebui-experimental/static/static/splash-dark.png:/app/backend/open_webui/static/splash-dark1.png
-      - /home/ubuntu/openwebui-experimental/static/favicon.png:/app/build/static/favicon1.png
-      - /home/ubuntu/openwebui-experimental/static/favicon:/app/build/static/favicon1
+      - /home/ubuntu/openwebui-experimental/static/favicon.png:/app/build//favicon1.png
+      - /home/ubuntu/openwebui-experimental/static/favicon:/app/build//favicon1
     depends_on:
       vllm-model1:
         condition: service_healthy
