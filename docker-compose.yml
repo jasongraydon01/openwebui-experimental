@@ -63,7 +63,6 @@ services:
       - /home/ubuntu/OneDrive/OneDrive-Test:/app/knowledge_base  # Mount PPTX files
       - ./entrypoint.sh:/app/entrypoint.sh
       - file_log_db:/app/log:rw  # Persist database folder; adjust to accomodate the synced local OneDrive folder
-      # - ./test_process:/app/test_process # for testing
     working_dir: /app/backend  # Set the working directory to /app/backend
     entrypoint: ["/bin/bash", "-c", "pip install --no-cache-dir -r requirements.txt && /app/entrypoint.sh"]
     depends_on:
@@ -75,7 +74,6 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_PATH=/app/log/file_log.db
-      # - FOLDER_PATH=/app/knowledge_base
       - FOLDER_PATH=/app/knowledge_base
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_CHAT_URL=http://vllm-container1:8000/v1/chat/completions
@@ -92,7 +90,7 @@ services:
       - "3100:8080"  # OpenWebUI frontend
     volumes:
       - open-webui:/app/backend/data
-      - ./home/ubuntu/openwebui-experimental/build:/app/custom_build
+      # - ./home/ubuntu/openwebui-experimental/static/static:/app/build/
     depends_on:
       vllm-model1:
         condition: service_healthy
@@ -107,7 +105,6 @@ services:
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
       - SEARCHAPI_ENGINE=google
       - DEFAULT_MODELS=HawkGPT
-      # - STATIC_DIR=/app/custom_build
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
