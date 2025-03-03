@@ -28,5 +28,4 @@ EXPOSE 8000
 ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server", \
             "--host", "0.0.0.0", "--port", "8000", \
             "--model", "tiiuae/Falcon3-7B-Instruct", \
-            "--gpu-memory-utilization", "0.75", \
-            "--temperature", "0"]
+            "--gpu-memory-utilization", "0.75"]
