@@ -135,8 +135,8 @@ services:
       - CUSTOM_NAME=HawkGPT
       - WEBUI_NAME=HawkGPT
       - ENABLE_OPENAI_API=True
-      - OPENAI_API_BASE_URL=http://vllm-model1:8000/v1
-      - OPENAI_API_KEY=EMPTY
+      - OPENAI_API_BASE_URLS=http://vllm-model1:8000/v1;http://vllm-model3:8002/v1
+      - OPENAI_API_KEYS=EMPTY;EMPTY
       - ENABLE_RAG_WEB_SEARCH=true
       - RAG_WEB_SEARCH_ENGINE=searchapi
       - SEARCH_API_KEY=gW9NEYWby2vdgsFvJjFPzsv9
