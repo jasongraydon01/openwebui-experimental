@@ -53,6 +53,33 @@ services:
     networks:
       - app_network
 
+  vllm-model3:
+    build:
+      context: ./vllm
+      dockerfile: Dockerfile.vllm3
+    container_name: vllm-container3
+    ports:
+      - "8002:8002"  # vLLM API for model3
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/v1/models"]
+      interval: 60s
+      timeout: 20s
+      retries: 10
+      start_period: 180s
+    networks:
+      - app_network
+
   backend:
     image: python:3.10-slim  # Use the Python base image
     container_name: backend
