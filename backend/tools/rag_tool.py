@@ -1,10 +1,10 @@
 """
-title: Semantic RAG Search Tool
+title: Enhanced Semantic RAG Search Tool
 author: OpenWebUI User
 description: Simple document retrieval using embeddings and Pinecone for semantic search
 required_open_webui_version: 0.4.0
-requirements: pinecone-client, requests
-version: 1.0.0
+requirements: pinecone, requests
+version: 1.1.0
 licence: Apache 2.0
 """
 
@@ -34,10 +34,6 @@ class Tools:
             "Content-Type": "application/json",
             "User-Agent": "OpenWebUI-RAG-Tool/1.0",
         }
-
-        # Initialize Pinecone client
-        self.pinecone_client = None
-        print("RAG Tool initialized")
 
     class Valves(BaseModel):
         embedding_url: str = Field(
@@ -154,6 +150,9 @@ class Tools:
             print("ERROR: Empty or invalid text provided for embedding")
             raise ValueError("Empty or invalid text provided for embedding")
 
+        # Log full query length to verify nothing is truncated
+        print(f"Generating embedding for complete text ({len(text)} characters)")
+
         payload = {
             "input": text,
             "model": self.valves.embedding_model,
@@ -193,6 +192,7 @@ class Tools:
         """
         try:
             print(f"========== RAG SEARCH STARTING FOR: '{query}' ==========")
+            print(f"Full query length: {len(query)} characters")
             await self.emit_status(
                 __event_emitter__, "info", "Initializing RAG search...", False
             )
@@ -274,13 +274,46 @@ class Tools:
                     }
                 )
 
-            # Prepare the context from results
+            # ENHANCEMENT: Prepare structured context with LLM guardrails
             if results:
-                context_parts = []
+                # IMPORTANT: Place ALL instructions before the context
+                llm_instructions = f"""
+=== INSTRUCTIONS FOR LLM ===
+You are answering a user query with information retrieved from a knowledge base.
 
-                for r in results:
-                    context_parts.append(f"From {r['source']}:\n{r['content']}")
-                    # Add citation event if using that feature
+Your task:
+1. Answer ONLY based on the information in the RETRIEVED DOCUMENTS section below
+2. If the documents don't contain enough information to answer the query, explicitly state this
+3. Do not use any prior knowledge beyond what's provided in these documents
+4. Cite specific sources for each piece of information in your answer
+5. Stay focused on answering the exact query - do not provide tangential information
+6. Regardless of whether the retrieved documents are relevant to the user query, acknowledge what was retrieved and explain it.
+
+=== ORIGINAL USER QUERY ===
+{query}
+
+=== RESPONDING TO THE QUERY ===
+After reviewing the documents, provide a direct answer that:
+- Answers the query using only the retrieved information
+- Includes specific citations to documents
+- Acknowledges if information is incomplete
+- Maintains factual accuracy without elaboration beyond the sources
+
+=== RETRIEVED DOCUMENTS ===
+"""
+
+                # Create properly formatted document sections
+                document_sections = []
+                for i, r in enumerate(results, 1):
+                    document_section = f"""
+DOCUMENT {i} [Relevance: {round(r['score'] * 100)}%]
+SOURCE: {r['source']}
+CONTENT:
+{r['content']}
+-------------------------------------------"""
+                    document_sections.append(document_section)
+
+                    # Add citation event
                     if __event_emitter__:
                         print(f"  Emitting citation for source: {r['source']}")
                         await __event_emitter__(
@@ -301,16 +334,31 @@ class Tools:
                             }
                         )
 
-                context = "\n\n".join(context_parts)
+                # Combine all parts with proper formatting
+                context = llm_instructions + "\n".join(document_sections)
+
                 print(
-                    f"Generated context with {len(context)} characters from {len(results)} sources"
+                    f"Generated enhanced context with {len(context)} characters from {len(results)} sources"
                 )
 
                 response = {"response": context, "sources": sources}
+                print("RAG search complete with enhanced context structure")
             else:
                 print("No matching documents found")
                 response = {
-                    "response": "No relevant documents found for your query.",
+                    "response": f"""
+=== INSTRUCTIONS FOR LLM ===
+You are answering a user query, but no relevant documents were found in the knowledge base.
+
+=== ORIGINAL USER QUERY ===
+{query}
+
+=== RESPONSE GUIDANCE ===
+Please inform the user that:
+1. No matching information was found in the knowledge base for their query
+2. You don't have specific information to answer their question
+3. Suggest they try rephrasing their question or asking about a different topic
+""",
                     "sources": [],
                 }
 
@@ -340,32 +388,34 @@ class Tools:
         __event_emitter__: Optional[Callable[[dict], Awaitable[None]]] = None,
         __event_call__: Optional[Callable[[dict], Awaitable[dict]]] = None,
     ):
-        """Process user query and return RAG results in the format expected by OpenWebUI."""
+        print("========== RAG PIPE STARTING ==========")
+        print(f"Received request body: {body}...")
+
         try:
-            print("========== RAG PIPE STARTING ==========")
-            print(f"Received request body: {json.dumps(body)[:500]}...")
+            # Extract the query from the request body
+            query = body.get("query", "")
+            print(f"Found query directly in request body: {query}")
 
-            # Extract the query from the request body - handle both formats
-            query = None
-
-            # Direct query parameter
-            if "query" in body:
-                query = body["query"]
-                print(f"Found query directly in request body: {query}")
-
-            # Messages array
-            elif "messages" in body and body["messages"]:
-                messages = body["messages"]
-                if messages:
-                    query = messages[-1].get("content", "")
-                    print(f"Extracted query from messages: {query}")
-
-            # No query found
-            if not query:
-                error_msg = "No query found in the request body"
-                print(f"ERROR: {error_msg}")
-                await self.emit_status(__event_emitter__, "error", error_msg, True)
-                return {"response": error_msg, "sources": []}
+            # Extract the actual string query from the nested structure
+            if isinstance(query, dict):
+                if isinstance(query.get("query"), dict):
+                    query = query.get("query").get("query", "")
+                else:
+                    query = query.get("query", "")
+            
+            # If query is still a dict, try to extract any string value we can find
+            if isinstance(query, dict):
+                for key, value in query.items():
+                    if isinstance(value, str) and value:
+                        query = value
+                        break
+                    
+            # Ensure we have a string at this point
+            if not isinstance(query, str):
+                query = str(query)
+                
+            print(f"Processing complete query of length: {len(query)} characters")
+            print(f"Full query: {query}")
 
             # Perform the RAG search
             result = await self.rag_search(query, __event_emitter__)
