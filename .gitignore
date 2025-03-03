@@ -1,3 +1,7 @@
 .env
 temp.py
 myenv/
+test_pptx/
+test_docling/
+docling_test.py
+update_links.py
