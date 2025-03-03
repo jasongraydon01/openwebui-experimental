@@ -54,7 +54,7 @@ pc = pinecone.Pinecone(api_key=PINECONE_API_KEY)
 if not pc.has_index(PINECONE_INDEX_NAME):
     pc.create_index(
         name=PINECONE_INDEX_NAME,
-        dimension=3584,
+        dimension=1536,
         metric="cosine",
         spec=ServerlessSpec(cloud="aws", region="us-east-1")
     )
@@ -206,12 +206,12 @@ def categorize_presentation(presentation_content):
     try:
         # Use the vLLM API to get the categorization with chat completions format
         payload = {
-            "model": "Qwen/Qwen2.5-7B-Instruct",
+            "model": "tiiuae/Falcon3-7B-Instruct",
             "messages": [
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": user_message}
             ],
-            "temperature": 0.2,  # Low temperature for more consistent results
+            "temperature": 0,  # Low temperature for more consistent results
             "max_tokens": 500
         }
         response = requests.post(VLLM_CHAT_URL, json=payload, timeout=60)
@@ -301,12 +301,12 @@ def summarize_slide(slide_content):
     try:
         # Use the vLLM API to get the summary using the chat completions format
         payload = {
-            "model": "Qwen/Qwen2.5-7B-Instruct",
+            "model": "tiiuae/Falcon3-7B-Instruct",
             "messages": [
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": user_message}
             ],
-            "temperature": 0.2  # Lower temperature for more precise data extraction
+            "temperature": 0
         }
         response = requests.post(VLLM_CHAT_URL, json=payload, timeout=30)
         response.raise_for_status()
@@ -437,7 +437,7 @@ def generate_embedding(text):
     try:
         payload = {
             "input": text,
-            "model": "Alibaba-NLP/gte-Qwen2-7B-instruct"
+            "model": "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
         }
         response = requests.post(VLLM_EMBED_URL, json=payload, timeout=30)
         response.raise_for_status()
@@ -557,7 +557,7 @@ def process_pptx_files():
                 "file_name": pptx_file,
                 "slide_number": processed_slide["slide_number"],
                 "one_drive_link": f"https://onedrive.com/{pptx_file}",
-                "content_preview": slide_summary[:1000],  # Use summary for preview
+                "content_preview": slide_summary,
                 "keywords": processed_slide["keywords"],
                 "last_modified": float(last_modified),
                 "research_type": categorization["research_type"],
